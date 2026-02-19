@@ -1,258 +1,1237 @@
-// ==========================================
-// 大道相亲模拟器 - 对话与交互核心系统 (dialogue.js)
-// ==========================================
+// ========== 事件处理 ==========
 
-const HISTORY_KEY = 'daoyou_history_v1';
+// 重逢概率：抽中已达成结局（满好感/反目）的角色时，实际接受该角色的概率
+const REUNION_PROB = 0.2; // 20%
 
-// ========== 1. 对话 UI 生成 ==========
-
-// 添加玩家消息（左侧头像）
-function addPlayerMessage(text) {
-    let avatarSrc = 'images/avatar/player-default.png';
-    let playerName = '我';
-    if (gameState.player) {
-        if (gameState.player.avatar) {
-            avatarSrc = 'images/avatar/' + gameState.player.avatar;
+function isGiftOwner(char, owners) {
+    for (let owner of owners) {
+        if (typeof owner === 'string') {
+            if (owner === 'any') return true;
+            if (owner === '灵门' && char.faction === '灵门') return true;
+            if (owner === char.sect) return true;
+        } else if (typeof owner === 'object') {
+            if (char.surname === owner.surname && char.name === owner.name) return true;
         }
-        playerName = gameState.player.surname + gameState.player.name;
     }
-    const html = `
-    <div class="message-container message-left">
-        <div class="avatar-wrapper">
-            <img class="avatar" src="${avatarSrc}" alt="${playerName}">
-            <span class="avatar-name">${playerName}</span>
-        </div>
-        <div class="bubble">${text}</div>
-    </div>`;
-    const box = document.getElementById('dialogueBox');
-    box.insertAdjacentHTML('beforeend', html);
-    box.scrollTop = box.scrollHeight;
+    return false;
 }
 
-// 添加道友消息（右侧头像）
-function addDaoyouMessage(text, speakerName, character) {
-    let avatarSrc = 'images/avatar/daoyou-default.png';
-    if (character && character.avatar) {
-        avatarSrc = 'images/avatar/' + character.avatar;
+function handleRandomEvent(silent = false) {
+    if (Math.random() > 0.2 || gameState.randomEventTriggered) return 0;
+    gameState.randomEventTriggered = true;
+    if (Math.random() < 0.02) {
+        const change = getRandomInt(-20, 0);
+        if (!silent) {
+            let description = "";
+            if (change <= -15) description = "😈 遭天魔了！天魔现身，道友重伤垂危，好感大跌！";
+            else if (change <= -5) description = "😈 遭天魔了！天魔余威震荡，道友对你心生埋怨。";
+            else description = "😈 遭天魔了！天魔虚影掠过，道友惊魂未定。";
+            addSystemMessage(`${description} (好感度 ${change})`);
+            addToHistory(`<p class="other-message">✨ 随机事件：${description}</p>`);
+        }
+        return change;
     }
-    const name = speakerName || '道友';
-    const html = `
-    <div class="message-container message-right">
-        <div class="bubble">${text}</div>
-        <div class="avatar-wrapper">
-            <img class="avatar" src="${avatarSrc}" alt="${name}">
-            <span class="avatar-name">${name}</span>
-        </div>
-    </div>`;
-    const box = document.getElementById('dialogueBox');
-    box.insertAdjacentHTML('beforeend', html);
-    box.scrollTop = box.scrollHeight;
-    addToHistory(`<p class="character-dialogue">${name}：${text}</p>`);
+    if (Math.random() < 0.04) {
+        const sum = gameState.player.cultivation + gameState.currentCharacter.cultivation;
+        let change = 0, description = "";
+        if (sum >= 180) { change = 5; description = "⚔️ 触发随机事件：人劫前奏——这是小辈的事，与你们无关。"; }
+        else if (sum >= 150) { change = 2; description = "⚔️ 触发随机事件：人劫前奏——打了小的来了老的。你是那个老的。"; }
+        else { change = 0; description = "⚔️ 触发随机事件：人劫前奏——修为不足，忧心忡忡。"; }
+        if (!silent) {
+            addSystemMessage(description);
+            addToHistory(`<p class="other-message">✨ 随机事件：${description}</p>`);
+        }
+        return change;
+    }
+    const ev = getRandomElement(gameData.randomEvents);
+    const change = getRandomInt(ev.effect.min, ev.effect.max);
+    if (!silent) {
+        addSystemMessage(`✨ 触发随机事件：${ev.name}——${ev.description}`);
+        addToHistory(`<p class="other-message">✨ 随机事件：${ev.name}——${ev.description}</p>`);
+    }
+    return change;
 }
 
-// 添加系统提示消息
-function addSystemMessage(text) {
-    const dialogueBox = document.getElementById('dialogueBox');
-    const lastChild = dialogueBox.lastElementChild;
-
-    // 如果最后一条也是系统消息，则合并，减少屏占比
-    if (lastChild && lastChild.classList.contains('system-message')) {
-        lastChild.innerHTML += '<br>' + text;
-    } else {
-        const html = `<div class="system-message">${text}</div>`;
-        dialogueBox.insertAdjacentHTML('beforeend', html);
-    }
-    dialogueBox.scrollTop = dialogueBox.scrollHeight;
+function checkSpecialDialogueCondition(player, target, charData) {
+  if (player.faction === "灵门" && target.sect === "还真" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "万炼雷池之威，可敢一试？"; }
+  if (player.surname === "张" && player.name === "衍" && target.surname === "张" && target.name === "蓁" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "兄长要此物，可是弟子中有人中了魔毒么？"; }
+  if (player.surname === "司马" && player.name === "权" && target.sect === "还真" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "冥泉宗的长老？"; }
+  if (player.surname === "秦" && player.name === "墨白" && target.surname === "沈" && target.name === "柏霜" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "明天我想去喂赢妫。"; }
+  if (player.face >= 90 && target.face >= 90 && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "道友风姿不凡。"; }
+  if (player.surname === "张" && player.name === "衍" && target.sect === "少清" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "可惜道友非我少清门下"; }
+  if (player.surname === "秦" && player.name === "墨白" && target.surname === "晏" && target.name === "长生" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "秦墨白……"; }
+  if (player.surname === "晏" && player.name === "长生" && target.surname === "秦" && target.name === "墨白" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "大师兄。"; }
+  if ((player.surname === "张" && player.name === "衍" || player.sect === "冥泉") && target.surname === "司马" && target.name === "权" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "我想回冥泉"; }
+  if (player.surname === "陶" && player.name === "真宏" && target.surname === "张" && target.name === "衍" && !charData.specialDialogueTriggered && Math.random() < 0.04) { charData.specialDialogueTriggered = true; return "真人欲见我，我自是能走到真人面前，真人若是不欲见我，我再使力也是见不到真人。"; }
+  if (player.surname === "岳" && player.name === "轩霄" && ((target.surname === "戚" && target.name === "宏禅") || (target.surname === "濮" && target.name === "玄升")) && !charData.specialDialogueTriggered && Math.random() < 0.02) { charData.specialDialogueTriggered = true; return "少清、溟沧联手，玄门两大派站在一处，便与天下为敌又如何？"; }
+  return null;
 }
 
-// ========== 2. 历史记录 (知与不由) ==========
+function getAvailableCharacters() { 
+    return gameState.allCharacters; 
+}
 
-function addToHistory(htmlContent) {
-    const historyDiv = document.getElementById('historyContent');
-    if (!historyDiv) return;
-
-    if (historyDiv.children.length === 1 && historyDiv.children[0].innerText.includes('符诏初展')) {
-        historyDiv.innerHTML = '';
+function meetNewCharacter() {
+    // 1. 获取并禁用抽取按钮（确保 UI 反馈）
+    const newFriendBtn = document.getElementById('newFriendBtn');
+    const actionButtons = document.getElementById('actionButtons');
+    if (newFriendBtn) {
+        newFriendBtn.disabled = true;
+        newFriendBtn.style.opacity = '0.6';
+        newFriendBtn.style.cursor = 'not-allowed';
     }
 
-    const entry = document.createElement('div');
-    entry.className = 'history-entry';
-    entry.innerHTML = htmlContent;
-    historyDiv.appendChild(entry);
-    historyDiv.scrollTop = historyDiv.scrollHeight;
+    // 2. 基础安全检查
+    if (!gameState.player) {
+        addSystemMessage("请先创建角色。");
+        if (newFriendBtn) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
+        return;
+    }
 
+    // 3. 核心逻辑包裹
     try {
-        let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-        if (history.length >= 500) history.shift();
-        history.push(htmlContent);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    } catch (e) {
-        console.warn('历史存档失败', e);
-    }
-}
+        // ---------- 概率触发东华洲要闻 ----------
+        if (gameState.eventMessageIndex !== undefined && 
+            gameState.eventMessageIndex < gameData.globalEventMessages.length) {
+            if (Math.random() < 0.025) {
+                const message = gameData.globalEventMessages[gameState.eventMessageIndex];
+                showEventModal(message); // 显示弹窗（内部会负责恢复按钮）
+                addToHistory(`<p class="other-message" style="background:#e6f7ff;">📰 东华洲要闻：${message}</p>`);
+                gameState.eventMessageIndex++;
+                saveGame();
+                return; // 重要：遇到弹窗必须 return，交由弹窗的“已知”按钮处理后续
+            }
+        }
 
-function loadHistory() {
-    const historyDiv = document.getElementById('historyContent');
-    if (!historyDiv) return;
+        // ---------- 触发“迁羽量胜”判断 ----------
+        if (gameState.eventMessageIndex >= gameData.globalEventMessages.length) {
+            let qianYuProb = 0.005; 
+            if (gameState.trialPassModalShown) qianYuProb = 0;
 
-    try {
-        const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-        if (history.length === 0) {
-            historyDiv.innerHTML = '<p class="other-message">符诏初展，一片混沌。</p>';
+            if (Math.random() < qianYuProb) {
+                const exemptNames = ["张衍", "秦墨白", "岳轩霄", "周阳廷", "梁循义", "沈崇"];
+                let killableNPCs = gameState.allCharacters.filter(c => !exemptNames.includes(c.surname + c.name));
+                
+                let playerIsKillable = false;
+                const playerFullName = gameState.player.surname + gameState.player.name;
+                if (!exemptNames.includes(playerFullName) && gameState.player.cultivation < 90) {
+                    playerIsKillable = true;
+                }
+
+                if (killableNPCs.length > 0 || playerIsKillable) {
+                    let candidates = killableNPCs.map(c => ({ ...c, isPlayer: false }));
+                    if (playerIsKillable) candidates.push({ ...gameState.player, isPlayer: true });
+
+                    const victim = getRandomElement(candidates);
+                    const victimName = victim.surname + victim.name;
+                    
+                    handleQianYuKill(victim, victimName); // 处理点杀弹窗（内部负责恢复按钮）
+                    return; // 重要：必须 return，结束本次流
+                }
+            }
+        }
+
+        // ---------- 正常抽取流程 ----------
+        const available = getAvailableCharacters();
+        if (available.length === 0) {
+            addSystemMessage(`暂无其他真人可结识（皆已大道圆满）。`);
+            if (newFriendBtn) {
+                newFriendBtn.disabled = false;
+                newFriendBtn.style.opacity = '1';
+                newFriendBtn.style.cursor = 'pointer';
+            }
             return;
         }
-        historyDiv.innerHTML = '';
-        history.forEach(content => {
-            const entry = document.createElement('div');
-            entry.className = 'history-entry';
-            entry.innerHTML = content;
-            historyDiv.appendChild(entry);
-        });
-        historyDiv.scrollTop = historyDiv.scrollHeight;
+
+        let selectedChar = null;
+        let attempts = 0;
+        while (attempts < 15) {
+            const candidate = getRandomElement(available);
+            const candidateId = candidate.surname + candidate.name;
+            const existingData = gameState.metCharacters.get(candidateId);
+            const isEnded = existingData && (existingData.favor >= 100 || existingData.relation === 'enemy');
+            
+            if (!isEnded || Math.random() < REUNION_PROB) {
+                selectedChar = candidate;
+                break;
+            }
+            attempts++;
+        }
+        if (!selectedChar) selectedChar = getRandomElement(available);
+
+        gameState.currentCharacter = { ...selectedChar };
+        const charId = gameState.currentCharacter.surname + gameState.currentCharacter.name;
+        let charData = gameState.metCharacters.get(charId);
+
+        if (!charData) {
+            charData = {
+                character: gameState.currentCharacter,
+                favor: calculateInitialFavor(),
+                talks: 0,
+                specialDialogueTriggered: false,
+                isAdvancedSimaQuan: false,
+                favorMaxed: false,
+                relation: 'none'
+            };
+            gameState.metCharacters.set(charId, charData);
+            gameState.isFirstEncounter = true;
+            displayEncounterInfo(charData.favor);
+        } else {
+            // 处理怨侣干扰
+            if (charData.relation === 'enemy' && Math.random() < 0.5) {
+                const loss = 5;
+                gameState.player.insightPoints = Math.max(0, (gameState.player.insightPoints || 0) - loss);
+                addSystemMessage(`⚠️ 怨侣重逢！${charId} 的干扰让你损失了 ${loss} 点感悟！`);
+                refreshPlayerInsightUI();
+            }
+            charData.talks = 0;
+            gameState.isFirstEncounter = false;
+            
+            const isEnded = charData.favor >= 100 || charData.relation === 'enemy';
+            if (isEnded) {
+                renderEndgameReunion(charId, charData);
+            } else {
+                displayReencounterInfo(charData.favor);
+            }
+        }
+
+        gameState.canTalk = (charData.favor < 100 && charData.relation !== 'enemy');
+        gameState.randomEventTriggered = false;
+        document.getElementById('currentInteraction').textContent = charId;
+        displayCurrentCharacter();
+        
+        if (gameState.canTalk) {
+            prepareHobbySelection();
+        } else {
+            document.getElementById('options').innerHTML = "";
+        }
+
+        updateStats();
+        updateRanking();
+        saveGame();
+
     } catch (e) {
-        historyDiv.innerHTML = '<p class="other-message">符诏初展，一片混沌。</p>';
+        console.error("抽取失败:", e);
+        addSystemMessage("抽取灵机紊乱，请重试。");
+    } finally {
+        // 只有在没有弹窗遮挡时，才在这里恢复按钮
+        const modal = document.getElementById('eventModal');
+        if (newFriendBtn && (!modal || modal.style.display !== 'flex')) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
     }
 }
 
-// ========== 3. 核心交互：话题选择 (双端适配) ==========
+// 辅助函数：渲染结局后的重逢对话
+function renderEndgameReunion(charId, charData) {
+    document.getElementById('dialogueBox').innerHTML = '';
+    let dialogue = "……";
+    if (charData.relation === 'companion') {
+        dialogue = getRandomElement(gameData.enemyDialogues?.fullFavorDialogues?.default || ["道友。"]);
+    } else {
+        const level = getFavorLevel(charData.favor);
+        dialogue = getRandomElement(gameData.enemyDialogues?.default[level] || ["哼。"]);
+    }
+    addDaoyouMessage(dialogue, charId, gameState.currentCharacter);
+}
+  
+function handleHobbySelection(selectedHobby, isReal) {
+    if (window.isHandlingTalk) return;
+    window.isHandlingTalk = true;
+    try {
+        let char = gameState.currentCharacter;
+        let charId = char.surname + char.name;
+        let charData = gameState.metCharacters.get(charId);
+        const player = gameState.player;
 
-function prepareHobbySelection() {
-    const char = gameState.currentCharacter;
-    const realHobbies = [...char.hobbies];
-    const selectedReal = shuffleArray(realHobbies).slice(0, 2);
-    const fakePool = gameData.allHobbies.filter(h => !realHobbies.includes(h));
-    const selectedFake = shuffleArray(fakePool).slice(0, 2);
-    const allOptions = shuffleArray([...selectedReal, ...selectedFake]);
+        charData.talks++;
+        gameState.metCharacters.set(charId, charData);
+        gameState.canTalk = charData.talks < 1;
 
-    const hobbyDescriptions = {
-        '鱼': '垂钓：交流关于灵鱼垂钓、心境磨练的心得。',
-        '生': '万生：讨论天地造化、动植物生长的奥秘。',
-        '蚀': '蚀文：研习上古蚀文秘传，窥探符咒本源。',
-        '道': '大道：论经讲道，探讨天地至理与修行根本。',
-        '剑': '剑法：切磋剑道感悟，一剑破万法。',
-        '杂': '杂学：丹道、阵法、炼器等辅修杂项。',
-        '魔': '魔道：探讨灵门功法、剑走偏锋的修行方式。',
-        '威': '伏魔：斩妖除魔，交流护法威能。',
-        '棋': '对弈：以棋入道，在方寸之间演化阴阳。',
-        '宗': '宗门：交流门派见闻、修仙界的势力分布。',
-        '丽': '容颜：爱美之心人皆有之，驻颜有术。',
-        '尊': '尊师：尊师重道，谈论师门传承。',
-        '怜': '怜徒：提携后辈，讨论教导弟子的心得。',
-        '局': '大局：纵览东华洲大势，博弈天下。',
-        '闲': '闲情：修仙不仅是苦行，也有琴棋书画的雅趣。',
-        '法': '法术：演练奇门遁法，五行变化。',
-        '花': '花木：侍弄灵草，寄情于草木生灵。',
-        '器': '法宝：品鉴奇珍异宝，探讨祭炼之法。',
-        '争': '斗战：以战养战，交流实战与搏杀经验。'
-    };
+        let favorChange = 0;
 
-    const optionsDiv = document.getElementById('options');
-    const tooltip = document.getElementById('hobbyTooltip');
-    
-    optionsDiv.innerHTML = `
-        <p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>
-        ${allOptions.map(hobby => `<button class="option" data-hobby="${hobby}">${hobby}</button>`).join('')}
-    `;
+        addPlayerMessage(`你对 ${charId} 提及【${selectedHobby}】`);
 
-    document.querySelectorAll('.option').forEach(btn => {
-        let pressTimer = null;
-        let isLongPress = false; // 增加标志位，防止长按后松手触发点击
+        const isEnded = charData.favor >= 100 || charData.relation === 'enemy';
+        const useEndgameLogic = isEnded || (charData.relation === 'companion' && !isReal);
 
-        // --- 1. 点击逻辑 (Click) ---
-        btn.addEventListener('click', function (e) {
-            if (isLongPress) {
-                isLongPress = false; // 如果是长按结束后的抬起，不触发点击
-                return;
+        if (!useEndgameLogic) {
+            // ---------- 非结局角色：原有对话逻辑 ----------
+            const special = checkSpecialDialogueCondition(player, gameState.currentCharacter, charData);
+            if (special) {
+                addDaoyouMessage(special, charId, char);
+            } else {
+                if (charData.favor >= 100) {
+                    const pool = gameData.enemyDialogues?.fullFavorDialogues?.default || ["……"];
+                    const dialogue = getRandomElement(pool);
+                    const daoyouMsg = isReal ? `【${selectedHobby}】${dialogue}` : dialogue;
+                    addDaoyouMessage(daoyouMsg, charId, char);
+                }
+                else if (charData.relation === 'enemy') {
+                    const level = getFavorLevel(charData.favor);
+                    const enemyPool = gameData.enemyDialogues?.default || gameData.dialogues.default;
+                    const dialogue = getRandomElement(enemyPool[level] || enemyPool[0] || ["……"]);
+                    const daoyouMsg = isReal ? `【${selectedHobby}】${dialogue}` : dialogue;
+                    addDaoyouMessage(daoyouMsg, charId, char);
+                } else {
+                    if (isReal) {
+                        const level = getFavorLevel(charData.favor);
+                        const pool = gameData.dialogues[selectedHobby] || gameData.dialogues.default;
+                        const dialogue = getRandomElement(pool[level] || pool[0] || ["……"]);
+                        const daoyouMsg = `【${selectedHobby}】${dialogue}`;
+                        addDaoyouMessage(daoyouMsg, charId, char);
+
+                        // ========== 计算真实爱好的好感变化 ==========
+                        const playerAllRealHobbies = [...(player.hobbies || []), ...(player.giftedHobbies || [])];
+                        if (playerAllRealHobbies.includes(selectedHobby)) {
+                            favorChange = 10;
+                            if (player.giftedHobbies && player.giftedHobbies.includes(selectedHobby)) {
+                                favorChange += 3;
+                                addSystemMessage(`由于你对「${selectedHobby}」有回礼感悟，交谈格外投机！`);
+                            }
+                        } else {
+                            favorChange = 5;
+                        }
+                    } else {
+                        let specialTriggered = false;
+                        if (charData.favor <= 20 && Math.random() < 0.3) {
+                            const specialLine = getLowFavorSpecialLine(player, char);
+                            if (specialLine) {
+                                addDaoyouMessage(specialLine, charId, char);
+                                specialTriggered = true;
+                                favorChange = 0;
+                            }
+                        }
+                        if (!specialTriggered) {
+                            const level = getFavorLevel(charData.favor);
+                            const pool = gameData.dialogues.default;
+                            const dialogue = getRandomElement(pool[level] || pool[0]);
+                            addDaoyouMessage(dialogue, charId, char);
+                            favorChange = -5;
+                        }
+                    }
+                }
             }
-            const hobby = this.getAttribute('data-hobby');
-            const isReal = realHobbies.includes(hobby);
-            tooltip.style.display = 'none';
-            handleHobbySelection(hobby, isReal);
-        });
 
-        // --- 2. 手机端触摸逻辑 ---
-        btn.addEventListener('touchstart', function (e) {
-            isLongPress = false;
-            const hobby = this.getAttribute('data-hobby');
+            const randomEventChange = handleRandomEvent(false);
+            favorChange += randomEventChange;
+
+            const oldFavor = charData.favor;
+            charData.favor = Math.max(0, Math.min(100, oldFavor + favorChange));
+            const actualChange = charData.favor - oldFavor;
+            gameState.metCharacters.set(charId, charData);
+
+            if (favorChange > 0) {
+                addSystemMessage(`好感度 +${favorChange}`);
+            } else if (favorChange < 0) {
+                addSystemMessage(`好感度 ${favorChange}`);
+            } else {
+                addSystemMessage(`好感度无变化`);
+            }
+
+        } else {
+            // ---------- 结局角色（道侣/敌人）的新逻辑 ----------
+            let baseChange = 0;
+            const playerAllRealHobbies = [...(player.hobbies || []), ...(player.giftedHobbies || [])];
+
+            if (isReal) {
+                if (playerAllRealHobbies.includes(selectedHobby)) {
+                    baseChange = 10;
+                    if (player.giftedHobbies && player.giftedHobbies.includes(selectedHobby)) {
+                        baseChange += 3;
+                    }
+                } else {
+                    baseChange = 5;
+                }
+            } else {
+                baseChange = -5;
+                if (player.cultivation - char.cultivation >= 25) {
+                    baseChange += getRandomInt(0, 1);
+                }
+                if (player.face - char.face >= 25) {
+                    baseChange += getRandomInt(0, 1);
+                }
+                if (char.tsundere >= 90) {
+                    baseChange += getRandomInt(0, 1);
+                }
+            }
+
+            if (charData.relation === 'companion' && !isReal) {
+                baseChange = baseChange * 6;
+            } else if (charData.relation === 'enemy' && isReal) {
+                baseChange = baseChange * 3;
+            } else {
+                baseChange = baseChange * 2;
+            }
+
+            const randomChange = handleRandomEvent(true) * 2; 
+            let favorChange = baseChange + randomChange;
+
+            if (charData.relation === 'companion' && !isReal) {
+                const lines = char.companionLines || (char.companionLine ? [char.companionLine] : ["……"]);
+                const idx = charData.companionIndex || 0;
+                const dialogue = lines[idx % lines.length];
+                charData.companionIndex = idx + 1;
+                addDaoyouMessage(dialogue, charId, char);
+            } else if (charData.relation === 'enemy' && isReal) {
+                const lines = char.enemyLines || (char.enemyLine ? [char.enemyLine] : ["……"]);
+                const idx = charData.enemyIndex || 0;
+                const dialogue = lines[idx % lines.length];
+                charData.enemyIndex = idx + 1;
+                addDaoyouMessage(dialogue, charId, char);
+            }
+
+            if (player.stance !== char.stance) {
+                if (favorChange > 0) favorChange = Math.floor(favorChange / 2);
+                else if (favorChange < 0) favorChange = favorChange * 2;
+            }
+
+            const oldFavor = charData.favor;
+            charData.favor = Math.max(0, Math.min(100, oldFavor + favorChange));
+            const actualChange = charData.favor - oldFavor;
+            gameState.metCharacters.set(charId, charData);
+
+            if (favorChange > 0) {
+                addSystemMessage(`好感度 +${favorChange}`);
+            } else if (favorChange < 0) {
+                addSystemMessage(`好感度 ${favorChange}`);
+            } else {
+                addSystemMessage(`好感度无变化`);
+            }
+
+            // ===== 道侣好感降到0，强制反目，可消耗修为挽回 =====
+            if (charData.relation === 'companion' && charData.favor <= 0) {
+                if (confirm(`你和 ${charId} 的关系已降至冰点！是否愿意消耗10点修为挽回这段感情？`)) {
+                    if (gameState.player.cultivation >= 10) {
+                        gameState.player.cultivation -= 10;
+                        charData.favor = 1;
+                        addSystemMessage(`你消耗10点修为，与 ${charId} 重归于好。`);
+                        addToHistory(`<p class="special-dialogue">你消耗10点修为，与 ${charId} 重归于好。</p>`);
+                    } else {
+                        alert(`修为不足10点，无法挽回。`);
+                        charData.relation = 'enemy';
+                        charData.favor = 0;
+                        addSystemMessage(`修为不足，${charId} 与你恩断义绝。`);
+                        addToHistory(`<p class="special-dialogue">修为不足，${charId} 与你恩断义绝。</p>`);
+                    }
+                } else {
+                    charData.relation = 'enemy';
+                    charData.favor = 0;
+                    charData.favorMaxed = false;  
+                    addSystemMessage(`你放弃了挽回，${charId} 与你恩断义绝。`);
+                    addToHistory(`<p class="special-dialogue">你放弃了挽回，${charId} 与你恩断义绝。</p>`);
+                }
+                gameState.metCharacters.set(charId, charData);
+                displayCurrentCharacter();
+            }
+        }
+
+        // ========== 公共部分（送礼、满好感、感悟、司马权进阶等） ==========
+        if (charData.favor >= 70 && Math.random() < 0.1) {
+            tryGiveGift(char, charData);
+        }
+        
+        // 满好感处理
+        if (charData.favor >= 100 && !charData.favorMaxed) {
+            charData.favorMaxed = true;
+
+            if (charData.relation === 'enemy') {
+                if (confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`)) {
+                    if (gameState.player.cultivation >= 10) {
+                        gameState.player.cultivation -= 10;
+                        charData.relation = 'companion';
+                        charData.wasEnemyBefore = true; 
+                        const extraCultivation = getRandomInt(0, 20); 
+                        gameState.player.cultivation += extraCultivation;
+                        addSystemMessage(`重修旧好，你意外获得 ${extraCultivation} 点修为！`);
+                        const specialLine = char.companionLine;
+                        if (specialLine && specialLine.trim() !== "") {
+                            addSpecialMessage(specialLine, char);
+                            addSystemMessage(`✨ 你与 ${charId} 重修旧好，结为道侣。`);
+                            addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 重修旧好，结为道侣。 ${specialLine}</p>`);
+                        } else {
+                            addSystemMessage(`✨ 你与 ${charId} 重修旧好，结为道侣！`);
+                            addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 重修旧好，结为道侣！</p>`);
+                        }
+                        gameState.maxFavorCharacters++;
+                        if (!gameState.maxFavorOrder) gameState.maxFavorOrder = [];
+                        gameState.maxFavorOrder.push(charId);
+                        updateTrialProgress();
+                        saveGame();
+                    } else {
+                        alert(`修为不足10点，无法重修。`);
+                    }
+                }
+            } else {
+                gameState.maxFavorCharacters++;
+                if (!gameState.maxFavorOrder) gameState.maxFavorOrder = [];
+                gameState.maxFavorOrder.push(charId);
+                updateTrialProgress();
+
+                const newFriendBtn = document.getElementById('newFriendBtn');
+                if (newFriendBtn) {
+                    newFriendBtn.disabled = true;
+                    newFriendBtn.style.opacity = '0.6';
+                    newFriendBtn.style.cursor = 'not-allowed';
+                }
+
+                const modalCharId = charId;
+                setTimeout(() => showSuccessModal(modalCharId), 600);
+                checkAchievements();
+                updateRanking();
+                updateStats();
+                saveGame();
+            }
+        }
+
+        // 感悟提升
+        if (Math.random() < INSIGHT_CHANCE) {
+            let canGainInsight = true;
+            if (char.cultivation >= 80 && player.cultivation < 80) canGainInsight = false;
+            if (char.cultivation >= 90 && player.cultivation < 90) canGainInsight = false;
+            if (canGainInsight) {
+                player.insightPoints = Math.round((player.insightPoints || 0) * 10 + 1) / 10;
+                addSystemMessage(`你对大道有所感悟，获得0.1点感悟。`);
+                while (player.insightPoints >= 10) {
+                    player.cultivation++;
+                    player.insightPoints -= 10;
+                    addSystemMessage(`✨ 感悟圆满！修为提升至 ${player.cultivation}！`);
+                }
+                refreshPlayerInsightUI();
+            }
+        }
+
+        // 司马权进阶
+        if (isSimaQuan(gameState.currentCharacter) && charData.favor >= 80 && !charData.isAdvancedSimaQuan) {
+            removeCharacterFromPool("司马权");
+            const advanced = { ...gameData.simaQuanAdvanced, hobbies: [...gameData.simaQuanAdvanced.hobbies] };
+            addCharacterToPool(advanced);
+            gameState.currentCharacter = advanced;
+            gameState.metCharacters.delete("司马权");
+            const newCharId = "天魔司马权";
+            const newCharData = { 
+                character: advanced, 
+                favor: charData.favor, 
+                talks: charData.talks, 
+                specialDialogueTriggered: charData.specialDialogueTriggered, 
+                isAdvancedSimaQuan: true, 
+                favorMaxed: charData.favorMaxed || false, 
+                relation: charData.relation || 'none',
+                companionIndex: charData.companionIndex || 0,
+                enemyIndex: charData.enemyIndex || 0
+            };
+            gameState.metCharacters.set(newCharId, newCharData);
+            char = advanced; charId = newCharId; charData = newCharData;
+            const evolutionHtml = `<div class="evolution-message"><strong>仰吞初阳火，炼得天魔身，倒卷地灵气，相成阴中神！司马权气息突变，成就天魔之身！</strong></div>`;
+            addSystemMessage(evolutionHtml);
+            addToHistory(evolutionHtml);
             
-            pressTimer = setTimeout(() => {
-                isLongPress = true; // 确定进入长按状态
-                const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
-                tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
-                tooltip.style.display = 'block';
-                
-                // 定位在屏幕上方
-                tooltip.style.left = '50%';
-                tooltip.style.top = '30%';
-                tooltip.style.transform = 'translateX(-50%)';
-                
-                // 触感反馈（如果设备支持）
-                if (navigator.vibrate) navigator.vibrate(20);
-            }, 500); // 500ms 判定为长按
-        }, {passive: true});
-
-        btn.addEventListener('touchend', function () {
-            clearTimeout(pressTimer);
-            // 延迟一点点隐藏，让眼睛能看清
-            setTimeout(() => { tooltip.style.display = 'none'; }, 100);
-        });
-
-        btn.addEventListener('touchmove', function () {
-            clearTimeout(pressTimer); // 只要手指动了，就不算长按
-        });
-
-        // --- 3. 电脑端逻辑 ---
-        btn.addEventListener('mouseenter', function (e) {
-            if (window.innerWidth >= 768) {
-                const hobby = this.getAttribute('data-hobby');
-                tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${hobbyDescriptions[hobby] || "..."}`;
-                tooltip.style.display = 'block';
+            if (charData.favor >= 100) {
+                if (charData.favorMaxed && charData.relation === 'none') {
+                    charData.favorMaxed = false;
+                }
+                if (!charData.favorMaxed) {
+                    charData.favorMaxed = true;
+                    gameState.maxFavorCharacters++;
+                    gameState.maxFavorOrder.push(newCharId);
+                    updateTrialProgress();
+                    setTimeout(() => showSuccessModal(newCharId), 600);
+                    checkAchievements();
+                    updateRanking();
+                    updateStats();
+                    saveGame();
+                }
             }
-        });
+        }
 
-        btn.addEventListener('mousemove', function (e) {
-            if (window.innerWidth >= 768) {
-                tooltip.style.left = (e.clientX + 15) + 'px';
-                tooltip.style.top = (e.clientY + 15) + 'px';
-                tooltip.style.transform = 'none';
+        displayCurrentCharacter();
+        updateStats();
+        updateRanking();
+        refreshPlayerInsightUI();
+        const optionsDiv = document.getElementById('options');
+        optionsDiv.innerHTML = "";
+
+        if (charData.talks >= 1 && charData.favor < 100) {
+            const special = checkSpecialDialogueCondition(player, gameState.currentCharacter, charData);
+            if (special) {
+                addDaoyouMessage(special, charId, char);
+            } else {
+                addSystemMessage(`已交流1次，请抽取新道友。`);
             }
-        });
+        }
+        saveGame();
+        checkAchievements();   
+    } finally {
+        window.isHandlingTalk = false;
+    }
+}
 
-        btn.addEventListener('mouseleave', function () {
-            if (window.innerWidth >= 768) tooltip.style.display = 'none';
-        });
+// ---------- 物品使用 ----------
+window.useItem = function(index) {
+  if (!gameState.player || !gameState.player.inventory) return;
+  const item = gameState.player.inventory[index];
+  if (!item) return;
 
-        // 彻底禁止默认菜单
-        btn.addEventListener('contextmenu', e => e.preventDefault());
+  gameState.player.cultivation = (gameState.player.cultivation || 0) + 0.2;
+
+  const char = gameState.currentCharacter;
+  if (char) {
+    const charId = char.surname + char.name;
+    const charData = gameState.metCharacters.get(charId);
+    if (charData) {
+      const oldFavor = charData.favor;
+      const favorGain = getRandomInt(0, 10);
+      charData.favor = Math.min(100, oldFavor + favorGain);
+      const actualChange = charData.favor - oldFavor;
+      addSystemMessage(`🎁 你将【${item.name || item.hobby}】赠予 ${charId}，好感度 +${favorGain}！`);
+
+      if (actualChange >= 10) {
+          if (charData.relation === 'companion' && charData.favorMaxed) {
+              const lines = char.companionLines || [];
+              if (lines.length > 0) {
+                  const idx = charData.companionIndex || 0;
+                  const dialogue = lines[idx % lines.length];
+                  charData.companionIndex = (idx + 1) % lines.length;
+                  addDaoyouMessage(dialogue, charId, char);
+              }
+          }
+          else if (charData.relation === 'enemy') {
+              const lines = char.enemyLines || [];
+              if (lines.length > 0) {
+                  const idx = charData.enemyIndex || 0;
+                  const dialogue = lines[idx % lines.length];
+                  charData.enemyIndex = (idx + 1) % lines.length;
+                  addDaoyouMessage(dialogue, charId, char);
+              }
+          }
+      }
+
+      if (charData.favor >= 100 && !charData.favorMaxed) {
+          charData.favorMaxed = true;
+          if (charData.relation === 'enemy') {
+              if (confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`)) {
+                  if (gameState.player.cultivation >= 10) {
+                      gameState.player.cultivation -= 10;
+                      charData.relation = 'companion';
+                      gameState.player.cultivation += 0.3;
+                      const specialLine = char.companionLine;
+                      if (specialLine && specialLine.trim() !== "") {
+                          addSpecialMessage(specialLine, char);
+                          addSystemMessage(`✨ 你与 ${charId} 重修旧好，结为道侣。`);
+                          addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 重修旧好，结为道侣。 ${specialLine}</p>`);
+                      } else {
+                          addSystemMessage(`✨ 你与 ${charId} 重修旧好，结为道侣！`);
+                          addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 重修旧好，结为道侣！</p>`);
+                      }
+                      gameState.maxFavorCharacters++;
+                      if (!gameState.maxFavorOrder) gameState.maxFavorOrder = [];
+                      gameState.maxFavorOrder.push(charId);
+                      updateTrialProgress();
+                      saveGame();
+                  } else {
+                      alert(`修为不足10点，无法重修。`);
+                  }
+              }
+          } else {
+              gameState.maxFavorCharacters++;
+              if (!gameState.maxFavorOrder) gameState.maxFavorOrder = [];
+              gameState.maxFavorOrder.push(charId);
+              updateTrialProgress();         
+              setTimeout(() => showSuccessModal(charId), 600); 
+              checkAchievements();             
+              updateRanking();              
+              updateStats();                 
+              saveGame();
+              checkAchievements();
+          }
+      }
+      
+      if (charData.favor >= 70 && Math.random() < 0.1) {
+        tryGiveGift(char, charData);
+      }
+    }
+  }
+
+  if (!gameState.player.receivedGiftHobbies.includes(item.hobby)) {
+    gameState.player.receivedGiftHobbies.push(item.hobby);
+  }
+  if (!gameState.player.usedGiftHobbies) {
+    gameState.player.usedGiftHobbies = [];
+  }
+  if (!gameState.player.usedGiftHobbies.includes(item.hobby)) {
+    gameState.player.usedGiftHobbies.push(item.hobby);
+  }
+  
+  gameState.player.inventory.splice(index, 1);
+  refreshPlayerInsightUI();
+  refreshInventoryUI();
+  displayCurrentCharacter();
+  updateRanking();
+  updateStats();
+  saveGame();
+};
+
+// ========== 送礼逻辑（唯一礼物） ==========
+function tryGiveGift(char, charData) {
+  if (charData.favor < 70) return; 
+
+  const obtained = gameState.player.receivedGiftHobbies || [];
+  const availableGifts = GIFTS.filter(gift => 
+    !obtained.includes(gift.hobby) && isGiftOwner(char, gift.owners)
+  );
+
+  if (availableGifts.length === 0) return;
+
+  const selectedGift = getRandomElement(availableGifts);
+  const hobby = selectedGift.hobby;
+  const itemName = selectedGift.name;
+
+  if (!gameState.player.inventory) gameState.player.inventory = [];
+  gameState.player.inventory.push({ hobby, name: itemName });
+
+  if (!obtained.includes(hobby)) {
+    gameState.player.receivedGiftHobbies.push(hobby);
+    if (!gameState.player.giftedHobbies) gameState.player.giftedHobbies = [];
+    if (!gameState.player.giftedHobbies.includes(hobby)) {
+      gameState.player.giftedHobbies.push(hobby);
+    }
+  }
+
+  addSystemMessage(`✨ ${char.surname + char.name} 赠与你【${itemName}】（${hobby}类）！`);
+  addToHistory(`<p class="other-message" style="background:#e8f5e8;">🎁 ${char.surname + char.name} 赠与你【${itemName}】</p>`);
+  refreshInventoryUI();
+}
+
+// ========== 满好感弹窗 ==========
+let successModalTimer = null;
+
+function setModalButtonsEnabled(enabled) {
+    const btns = ['companionBtn', 'enemyBtn', 'continueBtn', 'exitBtn'].map(id => document.getElementById(id));
+    btns.forEach(btn => {
+        if (btn) {
+            btn.disabled = !enabled;
+            btn.style.opacity = enabled ? '' : '0.5';
+            btn.style.cursor = enabled ? '' : 'not-allowed';
+        }
     });
 }
 
-// ========== 4. 阵营对话逻辑 ==========
-
-function getLowFavorSpecialLine(player, char) {
-    const pFaction = player.faction;
-    const pSect = player.sect;
-    const cFaction = char.faction;
-    const cSect = char.sect;
-
-    if (pSect === "野") {
-        if (cSect === "野") return "同是天涯沦落人。";
-        if (cFaction === "玄门" || cFaction === "灵门") return "。。。";
-    } else if (pFaction === "玄门" || pFaction === "灵门") {
-        if (cSect === "野") return "真人有礼。";
-        if (pFaction === cFaction) {
-            return pFaction === "玄门" ? "真人请让开。" : "道友客气。";
-        } else {
-            return (pFaction === "玄门" && cFaction === "灵门") ? "玄灵有别。" : "玄魔有别";
-        }
+function clearModalTimerAndEnable() {
+    if (successModalTimer) {
+        clearTimeout(successModalTimer);
+        successModalTimer = null;
     }
-    return null;
+    setModalButtonsEnabled(true);
+    const newFriendBtn = document.getElementById('newFriendBtn');
+    if (newFriendBtn) {
+        newFriendBtn.disabled = false;
+        newFriendBtn.style.opacity = '1';
+        newFriendBtn.style.cursor = 'pointer';
+    }
 }
 
-// 辅助工具：字符串内标签格式化
-function formatHobbyTagInString(text) {
-    if (!text) return text;
-    return text.replace(/【([^】]+)】/g, '<span class="hobby-tag">【$1】</span>');
+function showSuccessModal(charName) {
+    const charData = gameState.metCharacters.get(charName);
+    if (!charData || charData.favor < 100) {
+        console.warn(`⚠️ 试图为 ${charName} 显示满好感弹窗，但该角色好感未满或不存在`);
+        const newFriendBtn = document.getElementById('newFriendBtn');
+        if (newFriendBtn) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
+        return;
+    }
+    if (!gameState.currentCharacter || (gameState.currentCharacter.surname + gameState.currentCharacter.name) !== charName) {
+        console.warn(`⚠️ 弹窗角色 ${charName} 与当前角色 ${gameState.currentCharacter?.surname + gameState.currentCharacter?.name} 不一致，取消弹窗`);
+        const newFriendBtn = document.getElementById('newFriendBtn');
+        if (newFriendBtn) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
+        return;
+    }
+
+    const successModal = document.getElementById('successModal');
+    const modalMessage = document.getElementById('modalMessage');
+    if (successModal.style.display === 'flex') return;
+
+    clearModalTimerAndEnable();
+    modalMessage.textContent = `恭喜！${gameState.player.surname + gameState.player.name}与道友${charName}好感度已达满值，共赴大道之约！`; 
+    successModal.style.display = "flex";
+
+    const newFriendBtn = document.getElementById('newFriendBtn');
+    if (newFriendBtn) {
+        newFriendBtn.disabled = true;
+        newFriendBtn.style.opacity = '0.6';
+        newFriendBtn.style.cursor = 'not-allowed';
+    }
+
+    setModalButtonsEnabled(false);
+    successModalTimer = setTimeout(() => {
+        setModalButtonsEnabled(true);
+        successModalTimer = null;
+    }, 3000);
+
+    showFireworks(); 
+    updateStats(); 
 }
 
+// ========== 关系设置 ==========
+let isSettingRelation = false;
+function setRelation(type) {
+    if (isSettingRelation) return;
+    isSettingRelation = true;
 
+    const char = gameState.currentCharacter;
+    if (!char) {
+        isSettingRelation = false;
+        return;
+    }
+
+    const companionBtn = document.getElementById('companionBtn');
+    const enemyBtn = document.getElementById('enemyBtn');
+    if (companionBtn) companionBtn.disabled = true;
+    if (enemyBtn) enemyBtn.disabled = true;
+
+    try {
+        const charId = char.surname + char.name;
+        const charData = gameState.metCharacters.get(charId);
+        if (!charData) return;
+
+        if (type === 'companion') {
+            gameState.player.cultivation += 0.5;
+            if (!charData.favorMaxed) {
+                charData.favorMaxed = true;
+                gameState.maxFavorCharacters++;
+            }
+            charData.relation = 'companion';
+
+            const specialLine = char.companionLine;
+            if (specialLine && specialLine.trim() !== "") {
+                addSpecialMessage(specialLine, char); 
+                addSystemMessage(`✨ 你与 ${charId} 结为道侣。`);
+                addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 结为道侣。 ${specialLine}</p>`);
+            } else {
+                addSystemMessage(`✨ 你与 ${charId} 结为道侣！`);
+                addToHistory(`<p class="special-dialogue">✨ 你与 ${charId} 结为道侣！</p>`);
+            }
+        } else if (type === 'enemy') {
+            const wasFavorMaxed = charData.favorMaxed === true;
+
+            charData.favor = 0;
+            charData.favorMaxed = false;
+            charData.relation = 'enemy';
+
+            if (wasFavorMaxed) {
+                gameState.maxFavorCharacters = Math.max(0, gameState.maxFavorCharacters - 1);
+                if (gameState.maxFavorOrder) {
+                    gameState.maxFavorOrder = gameState.maxFavorOrder.filter(id => id !== charId);
+                }
+            }
+
+            const specialLine = char.enemyLine;
+            if (specialLine && specialLine.trim() !== "") {
+                addSpecialMessage(specialLine, char);
+                addSystemMessage(`💀 你与 ${charId} 恩断义绝。`);
+                addToHistory(`<p class="special-dialogue">💀 你与 ${charId} 恩断义绝。 ${specialLine}</p>`);
+            } else {
+                addSystemMessage(`💀 你与 ${charId} 恩断义绝，从此大道漫漫，再无携手！`);
+                addToHistory(`<p class="special-dialogue">💀 你与 ${charId} 恩断义绝，从此大道漫漫，再无携手！</p>`);
+            }
+
+            if (Math.random() < 0.2) {
+                const playerAllHobbies = new Set([
+                    ...(gameState.player.hobbies || []),
+                    ...(gameState.player.giftedHobbies || [])
+                ]);
+                const stealableHobbies = char.hobbies.filter(h => !playerAllHobbies.has(h));
+                if (stealableHobbies.length > 0) {
+                    const stolen = getRandomElement(stealableHobbies);
+                    if (!gameState.player.giftedHobbies) gameState.player.giftedHobbies = [];
+                    gameState.player.giftedHobbies.push(stolen);
+                    addSystemMessage(`✨ 因果纠缠！你与 ${charId} 反目，却在激烈争斗中意外领悟了【${stolen}】！`);
+                    addToHistory(`<p class="special-dialogue">✨ 因果纠缠！你与 ${charId} 反目，却在激烈争斗中意外领悟了【${stolen}】！</p>`);
+                }
+            }
+        }
+
+        const successModal = document.getElementById('successModal');
+        successModal.style.display = "none";
+        const newFriendBtn = document.getElementById('newFriendBtn');
+        if (newFriendBtn) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
+        refreshPlayerInsightUI();
+        updateStats();
+        updateTrialProgress();
+        updateRanking();
+        checkAchievements();
+        saveGame();
+        displayCurrentCharacter();
+
+    } finally {
+        isSettingRelation = false;
+        if (companionBtn) companionBtn.disabled = false;
+        if (enemyBtn) enemyBtn.disabled = false;
+    }
+}
+
+// ========== 初始化游戏 ==========
+window.isHandlingTalk = false;
+
+function initGame() {
+  const nameInput = document.getElementById('nameInput');
+  const fullName = nameInput.value.trim();
+  if (!fullName) { showStatus("请输入姓名！", "info"); return; }
+
+  let matched = null;
+  for (let c of gameData.characters) {
+    if ((c.surname + c.name) === fullName) {
+      matched = { ...c };
+      if (!matched.hobbies || matched.hobbies.length === 0) {
+        matched.hobbies = generateHobbiesForCharacter(matched);
+      }
+      break;
+    }
+  }
+
+  if (matched) {
+    gameState.player = {
+      ...matched,
+      hobbies: [...matched.hobbies],
+      insightPoints: 0,
+      giftedHobbies: [],
+      inventory: [],
+      receivedGiftHobbies: [],
+      usedGiftHobbies: []
+    };
+    gameState.player.hobbies = generateHobbiesForCharacter(gameState.player);
+    showStatus(`匹配到已有角色：${fullName}`, "success");
+  } else {
+    const s = fullName.charAt(0);           
+    const n = fullName.slice(1);             
+    const factions = ["玄门", "灵门"];
+    const faction = getRandomElement(factions);
+    let sect;
+    if (faction === "玄门") {
+      sect = getRandomElement(["溟沧","少清","玉霄","元阳","还真","平都","清羽","广源","补天","南华","野"]);
+    } else {
+      sect = getRandomElement(["冥泉","血魄","九灵","元蜃","野"]);
+    }
+    gameState.player = {
+      surname: s, name: n, title: "", face: getRandomInt(70, 95),
+      cultivation: getRandomInt(60, 90), faction: faction,
+      sect: sect, stance: getRandomElement(["新", "旧"]),
+      hobbies: [],  
+      special: getRandomElement(["劫", "情", "劳", "殇", "转", "承"]),
+      tsundere: getRandomInt(20, 90), insightPoints: 0, giftedHobbies: [], inventory: [],
+      receivedGiftHobbies: [],
+      usedGiftHobbies: []
+    };
+    gameState.player.hobbies = generateHobbiesForCharacter(gameState.player);
+    showStatus(`未找到匹配角色，已创建新角色：${fullName}，爱好${gameState.player.hobbies.length}个`, "success");
+  }
+
+  const playerFullName = gameState.player.surname + gameState.player.name;
+  gameState.allCharacters = gameState.allCharacters.filter(c => (c.surname + c.name) !== playerFullName);
+
+  gameState.allCharacters.forEach(char => {
+    if (!char.hobbies || char.hobbies.length === 0) {
+      char.hobbies = generateHobbiesForCharacter(char);
+    }
+  });
+
+  displayPlayerInfo();
+  const playerInfo = document.getElementById('playerInfo');
+  const progressContainer = document.getElementById('progressContainer');
+  playerInfo.style.display = "block";
+  progressContainer.style.display = "block";
+  updateStats();
+  refreshPlayerInsightUI();
+  refreshInventoryUI();
+
+  const startBtn = document.getElementById('startBtn');
+  startBtn.disabled = true;
+  nameInput.disabled = true;
+  meetNewCharacter();
+  saveGame();
+}
+
+// ========== 按钮事件绑定 ==========
+document.addEventListener('DOMContentLoaded', function() {
+  const startBtn = document.getElementById('startBtn');
+  const nameInput = document.getElementById('nameInput');
+  const newFriendBtn = document.getElementById('newFriendBtn');
+  const continueBtn = document.getElementById('continueBtn');
+  const exitBtn = document.getElementById('exitBtn');
+  const companionBtn = document.getElementById('companionBtn');
+  const enemyBtn = document.getElementById('enemyBtn');
+  const continueTrialBtn = document.getElementById('continueTrialBtn');
+  const restartTrialBtn = document.getElementById('restartTrialBtn');
+  const manualSaveBtn = document.getElementById('manualSaveBtn');
+  const clearSaveBtn = document.getElementById('clearSaveBtn');
+
+  startBtn.addEventListener('click', initGame);
+  nameInput.addEventListener('keypress', e => { if (e.key === 'Enter') initGame(); });
+  newFriendBtn.addEventListener('click', meetNewCharacter);
+
+  continueBtn.addEventListener('click', () => {
+      clearModalTimerAndEnable();      
+      successModal.style.display = "none";
+      meetNewCharacter();
+  });
+
+  exitBtn.addEventListener('click', () => {
+      clearModalTimerAndEnable();
+      successModal.style.display = "none";
+      alert("感谢游玩！");
+  });
+
+  companionBtn.addEventListener('click', () => {
+      clearModalTimerAndEnable();
+      setRelation('companion');
+  });
+
+  enemyBtn.addEventListener('click', () => {
+      clearModalTimerAndEnable();
+      setRelation('enemy');
+  });
+
+  continueTrialBtn.addEventListener('click', () => trialModal.style.display = "none");
+
+  restartTrialBtn.addEventListener('click', () => {
+    trialModal.style.display = "none";
+
+    localStorage.removeItem(HISTORY_KEY);
+      
+    gameData.simaQuanAdvanced = {
+      surname: "天魔", name: "司马权", title: "", face: 90, cultivation: 90,
+      faction: "灵门", sect: "冥泉", stance: "新", hobbies: [],
+      special: "转", tsundere: 90,
+      companionLine: "天魔司马权声音低沉：「我这天魔可是举世皆敌，你当真要与我在一起？」",
+      enemyLine: "司马权眼光深沉：「天魔变化万端，可出入阴阳，你分得出哪个不是我？」"
+    };
+
+    resetAllCharactersHobbies();
+
+    gameState = {
+      player: null,
+      currentCharacter: null,
+      allCharacters: gameData.characters.map(c => ({ ...c, hobbies: [...c.hobbies] })),
+      metCharacters: new Map(),
+      maxFavorCharacters: 0,
+      maxFavorSectMasters: new Set(),
+      isFirstEncounter: true,
+      canTalk: true,
+      randomEventTriggered: false,
+      specialDialogueTriggered: false,
+      achievementsUnlocked: [],
+      maxFavorOrder: []
+    };
+    gameState.trialPassModalShown = false;
+    nameInput.disabled = false;
+    startBtn.disabled = false;
+    nameInput.value = "";
+    playerInfo.style.display = "none";
+    progressContainer.style.display = "none";
+    optionsDiv.innerHTML = "";
+    newFriendBtn.disabled = true;
+    newFriendBtn.style.opacity = '0.6';
+    newFriendBtn.style.cursor = 'not-allowed';
+    actionButtons.style.display = "block";  
+    currentInteraction.textContent = "无";
+    document.getElementById('currentCharacter').innerHTML = "";
+    refreshAchievementUI();
+    loadHistory();
+    showStatus("游戏已重置，存档已清除。", "info");
+    
+    const continueTrialBtnLocal = document.getElementById('continueTrialBtn');
+    if (continueTrialBtnLocal) continueTrialBtnLocal.style.display = 'inline-block';
+
+    const restartTrialBtnLocal = document.getElementById('restartTrialBtn');
+    if (restartTrialBtnLocal) restartTrialBtnLocal.style.display = 'none';
+  });
+
+  manualSaveBtn.addEventListener('click', () => { 
+      if (gameState.player) { 
+          saveGame(); 
+          showStatus('📀 手动保存成功', 'success'); 
+      } else { 
+          showStatus('请先创建角色', 'info'); 
+      } 
+  });
+
+  clearSaveBtn.addEventListener('click', () => { 
+      if (confirm('重置将清除所有存档并回到标题，确定吗？')) { 
+          localStorage.removeItem(SAVE_KEY); 
+          localStorage.removeItem(HISTORY_KEY);
+          location.reload(); 
+      } 
+  });
+});
+
+// ========== 特殊对话 / 成就消息 ==========
+function addSpecialMessage(text, character) {
+    const dialogueBox = document.getElementById('dialogueBox');
+    const html = `<div class="special-dialogue-message">${text}</div>`;
+    dialogueBox.insertAdjacentHTML('beforeend', html);
+    dialogueBox.scrollTop = dialogueBox.scrollHeight;
+}
+
+function addSpecialAchievementMessage(text) {
+    const dialogueBox = document.getElementById('dialogueBox');
+    const html = `<div class="achievement-unlock-message">${text}</div>`;
+    dialogueBox.insertAdjacentHTML('beforeend', html);
+    dialogueBox.scrollTop = dialogueBox.scrollHeight;
+}
+
+// ========== 成就系统 ==========
+function checkAchievements() {
+  if (!gameState.achievementsUnlocked) gameState.achievementsUnlocked = [];
+  ACHIEVEMENTS.forEach(ach => {
+    if (!gameState.achievementsUnlocked.includes(ach.id) && ach.check(gameState)) {
+      unlockAchievement(ach.id);
+    }
+  });
+}
+
+function unlockAchievement(achId) {
+  if (!gameState.achievementsUnlocked) gameState.achievementsUnlocked = [];
+  if (gameState.achievementsUnlocked.includes(achId)) return;
+  gameState.achievementsUnlocked.push(achId);
+  const ach = ACHIEVEMENTS.find(a => a.id === achId);
+  if (ach) {
+    const msg = `🏆 成就解锁：${ach.name} —— ${ach.desc}`;
+    addSpecialAchievementMessage(msg);            
+    addToHistory(`<p class="special-dialogue">${msg}</p>`);
+    showStatus(`🏆 成就「${ach.name}」已达成！`, 'success');
+  }
+  refreshAchievementUI();
+  saveGame();
+}
+
+// ========== 修复：全局事件消息弹窗 ==========
+function showEventModal(message) {
+    const modal = document.getElementById('eventModal');
+    const msgDiv = document.getElementById('eventModalMessage');
+    const confirmBtn = document.getElementById('eventModalConfirmBtn');
+    const newFriendBtn = document.getElementById('newFriendBtn');
+
+    if (!modal || !msgDiv || !confirmBtn) return;
+
+    confirmBtn.style.display = 'none';
+    if (window.eventModalTimer) clearTimeout(window.eventModalTimer);
+
+    msgDiv.textContent = message;
+    modal.style.display = 'flex';
+
+    // 2秒后显示“已知”按钮
+    window.eventModalTimer = setTimeout(() => {
+        confirmBtn.style.display = 'inline-block';
+        confirmBtn.onclick = function() {
+            modal.style.display = 'none';
+            confirmBtn.style.display = 'none';
+            
+            // 重要修复：必须在点击已知后恢复按钮
+            if (newFriendBtn) {
+                newFriendBtn.disabled = false;
+                newFriendBtn.style.opacity = '1';
+                newFriendBtn.style.cursor = 'pointer';
+            }
+        };
+    }, 2000);
+}
+
+// ========== 补全缺失且修复：处理点杀事件的弹窗 ==========
+function handleQianYuKill(victim, victimName) {
+    const modal = document.getElementById('eventModal');
+    const modalTitle = document.querySelector('#eventModal .modal-title');
+    const msgDiv = document.getElementById('eventModalMessage');
+    const confirmBtn = document.getElementById('eventModalConfirmBtn');
+    const newFriendBtn = document.getElementById('newFriendBtn');
+
+    if (!modal || !msgDiv || !confirmBtn) return;
+
+    modalTitle.textContent = '⚡ 迁羽量胜 ⚡';
+    const spellDesc = `“迁羽量胜”之术发动！一羽定天机！`;
+    const fullMessage = victim.isPlayer ? 
+        `${spellDesc}\n\n💀 不幸！你被选中，当场陨落！` : 
+        `${spellDesc}\n\n💀 噩耗！${victimName} 真人不幸陨落！`;
+    
+    msgDiv.textContent = fullMessage;
+    modal.style.display = 'flex';
+    
+    if (window.eventModalTimer) clearTimeout(window.eventModalTimer);
+    confirmBtn.style.display = 'none';
+
+    window.eventModalTimer = setTimeout(() => {
+        confirmBtn.style.display = 'inline-block';
+        confirmBtn.onclick = function() {
+            modal.style.display = 'none';
+            confirmBtn.style.display = 'none';
+            
+            if (victim.isPlayer) {
+                gameOver();
+            } else {
+                // 清理被杀的角色
+                gameState.allCharacters = gameState.allCharacters.filter(c => 
+                    !(c.surname === victim.surname && c.name === victim.name)
+                );
+                if (gameState.metCharacters.has(victimName)) {
+                    gameState.metCharacters.delete(victimName);
+                }
+                if (gameState.qianYuKillCount !== undefined) {
+                    gameState.qianYuKillCount++;
+                }
+                
+                // 重要修复：被杀的是NPC，继续游戏，恢复按钮
+                if (newFriendBtn) {
+                    newFriendBtn.disabled = false;
+                    newFriendBtn.style.opacity = '1';
+                    newFriendBtn.style.cursor = 'pointer';
+                }
+                
+                saveGame();
+                updateRanking();
+                updateStats();
+            }
+        };
+    }, 2000);
+}
+
+// ========== 游戏结束 ==========
+function gameOver() {
+    const newFriendBtn = document.getElementById('newFriendBtn');
+    if (newFriendBtn) {
+        newFriendBtn.disabled = true;
+        newFriendBtn.style.opacity = '0.6';
+        newFriendBtn.style.cursor = 'not-allowed';
+    }
+    const optionsDiv = document.getElementById('options');
+    if (optionsDiv) optionsDiv.innerHTML = '';
+
+    const modal = document.getElementById('trialModal');
+    const modalTitle = document.querySelector('#trialModal .modal-title');
+    const modalMessage = document.getElementById('trialMessage');
+    if (modalTitle) modalTitle.textContent = '☠️ 大道陨落 ☠️';
+    if (modalMessage) modalMessage.textContent = '你被“迁羽量胜”之术击中，气数已尽，当场陨落。大道之路，就此终结。';
+    
+    const continueBtn = document.getElementById('continueTrialBtn');
+    const restartBtn = document.getElementById('restartTrialBtn');
+    if (continueBtn) continueBtn.style.display = 'none';
+    if (restartBtn) restartBtn.style.display = 'inline-block';
+
+    modal.style.display = 'flex';
+    const actionButtons = document.getElementById('actionButtons');
+    if (actionButtons) actionButtons.style.display = "block";
+}
