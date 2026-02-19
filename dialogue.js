@@ -1,12 +1,5 @@
-// ==========================================
-// 大道相亲模拟器 - 对话与交互核心系统 (dialogue.js)
-// ==========================================
-
-const HISTORY_KEY = 'daoyou_history_v1';
-
-// ========== 1. 对话 UI 生成 ==========
-
-// 添加玩家消息（左侧头像）
+// ========== 对话系统 ==========
+// 添加玩家消息（左侧头像）- 不记录历史
 function addPlayerMessage(text) {
     let avatarSrc = 'images/avatar/player-default.png';
     let playerName = '我';
@@ -16,46 +9,39 @@ function addPlayerMessage(text) {
         }
         playerName = gameState.player.surname + gameState.player.name;
     }
-    const html = `
-    <div class="message-container message-left">
+    const html = `<div class="message-container message-left">
         <div class="avatar-wrapper">
             <img class="avatar" src="${avatarSrc}" alt="${playerName}">
             <span class="avatar-name">${playerName}</span>
         </div>
         <div class="bubble">${text}</div>
     </div>`;
-    const box = document.getElementById('dialogueBox');
-    box.insertAdjacentHTML('beforeend', html);
-    box.scrollTop = box.scrollHeight;
+    document.getElementById('dialogueBox').insertAdjacentHTML('beforeend', html);
+    document.getElementById('dialogueBox').scrollTop = document.getElementById('dialogueBox').scrollHeight;
 }
 
-// 添加道友消息（右侧头像）
 function addDaoyouMessage(text, speakerName, character) {
     let avatarSrc = 'images/avatar/daoyou-default.png';
     if (character && character.avatar) {
         avatarSrc = 'images/avatar/' + character.avatar;
     }
     const name = speakerName || '道友';
-    const html = `
-    <div class="message-container message-right">
+    const html = `<div class="message-container message-right">
         <div class="bubble">${text}</div>
         <div class="avatar-wrapper">
             <img class="avatar" src="${avatarSrc}" alt="${name}">
             <span class="avatar-name">${name}</span>
         </div>
     </div>`;
-    const box = document.getElementById('dialogueBox');
-    box.insertAdjacentHTML('beforeend', html);
-    box.scrollTop = box.scrollHeight;
+    document.getElementById('dialogueBox').insertAdjacentHTML('beforeend', html);
+    document.getElementById('dialogueBox').scrollTop = document.getElementById('dialogueBox').scrollHeight;
     addToHistory(`<p class="character-dialogue">${name}：${text}</p>`);
 }
 
-// 添加系统提示消息
 function addSystemMessage(text) {
     const dialogueBox = document.getElementById('dialogueBox');
     const lastChild = dialogueBox.lastElementChild;
 
-    // 如果最后一条也是系统消息，则合并，减少屏占比
     if (lastChild && lastChild.classList.contains('system-message')) {
         lastChild.innerHTML += '<br>' + text;
     } else {
@@ -65,13 +51,11 @@ function addSystemMessage(text) {
     dialogueBox.scrollTop = dialogueBox.scrollHeight;
 }
 
-// ========== 2. 历史记录 (知与不由) ==========
-
 function addToHistory(htmlContent) {
     const historyDiv = document.getElementById('historyContent');
     if (!historyDiv) return;
 
-    if (historyDiv.children.length === 1 && historyDiv.children[0].innerText.includes('符诏初展')) {
+    if (historyDiv.children.length === 1 && historyDiv.children[0].innerText === '符诏初展，一片混沌。') {
         historyDiv.innerHTML = '';
     }
 
@@ -82,12 +66,18 @@ function addToHistory(htmlContent) {
     historyDiv.scrollTop = historyDiv.scrollHeight;
 
     try {
-        let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-        if (history.length >= 500) history.shift();
+        let history = [];
+        const saved = localStorage.getItem(HISTORY_KEY);
+        if (saved) {
+            history = JSON.parse(saved);
+        }
+        if (history.length >= 500) {
+            history.shift();
+        }
         history.push(htmlContent);
         localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch (e) {
-        console.warn('历史存档失败', e);
+        console.warn('保存历史记录失败', e);
     }
 }
 
@@ -96,11 +86,18 @@ function loadHistory() {
     if (!historyDiv) return;
 
     try {
-        const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        const saved = localStorage.getItem(HISTORY_KEY);
+        if (!saved) {
+            historyDiv.innerHTML = '<p class="other-message">符诏初展，一片混沌。</p>';
+            return;
+        }
+
+        const history = JSON.parse(saved);
         if (history.length === 0) {
             historyDiv.innerHTML = '<p class="other-message">符诏初展，一片混沌。</p>';
             return;
         }
+
         historyDiv.innerHTML = '';
         history.forEach(content => {
             const entry = document.createElement('div');
@@ -110,149 +107,185 @@ function loadHistory() {
         });
         historyDiv.scrollTop = historyDiv.scrollHeight;
     } catch (e) {
+        console.warn('加载历史记录失败', e);
         historyDiv.innerHTML = '<p class="other-message">符诏初展，一片混沌。</p>';
     }
 }
 
-// ========== 3. 核心交互：话题选择 (双端适配) ==========
+function formatHobbyTagInString(text) { 
+    if (!text) return text; 
+    return text.replace(/【([^】]+)】/g, '<span class="hobby-tag">【$1】</span>'); 
+}
 
 function prepareHobbySelection() {
-    const char = gameState.currentCharacter;
-    const realHobbies = [...char.hobbies];
-    const selectedReal = shuffleArray(realHobbies).slice(0, 2);
-    const fakePool = gameData.allHobbies.filter(h => !realHobbies.includes(h));
-    const selectedFake = shuffleArray(fakePool).slice(0, 2);
-    const allOptions = shuffleArray([...selectedReal, ...selectedFake]);
+  const char = gameState.currentCharacter; 
+  const realHobbies = [...char.hobbies]; 
+  const selectedReal = shuffleArray(realHobbies).slice(0, 2); 
+  const fakePool = gameData.allHobbies.filter(h => !realHobbies.includes(h)); 
+  const selectedFake = shuffleArray(fakePool).slice(0, 2); 
+  const allOptions = shuffleArray([...selectedReal, ...selectedFake]); 
+  
+  const hobbyDescriptions = {
+    '鱼': '垂钓：交流关于灵鱼垂钓、心境磨练的心得。',
+    '生': '万生：讨论天地造化、动植物生长的奥秘。',
+    '蚀': '蚀文：研习上古蚀文秘传，窥探符咒本源。',
+    '道': '大道：论经讲道，探讨天地至理与修行根本。',
+    '剑': '剑法：切磋剑道感悟，一剑破万法。',
+    '杂': '杂学：丹道、阵法、炼器等辅修杂项。',
+    '魔': '魔道：探讨灵门功法、剑走偏锋的修行方式。',
+    '威': '伏魔：斩妖除魔，交流护法威能。',
+    '棋': '对弈：以棋入道，在方寸之间演化阴阳。',
+    '宗': '宗门：交流门派见闻、修仙界的势力分布。',
+    '丽': '容颜：爱美之心人皆有之，驻颜有术。',
+    '尊': '尊师：尊师重道，谈论师门传承。',
+    '怜': '怜徒：提携后辈，讨论教导弟子的心得。',
+    '局': '大局：纵览东华洲大势，博弈天下。',
+    '闲': '闲情：修仙不仅是苦行，也有琴棋书画的雅趣。',
+    '法': '法术：演练奇门遁法，五行变化。',
+    '花': '花木：侍弄灵草，寄情于草木生灵。',
+    '器': '法宝：品鉴奇珍异宝，探讨祭炼之法。',
+    '争': '斗战：以战养战，交流实战与搏杀经验。'
+  };
 
-    const hobbyDescriptions = {
-        '鱼': '垂钓：交流关于灵鱼垂钓、心境磨练的心得。',
-        '生': '万生：讨论天地造化、动植物生长的奥秘。',
-        '蚀': '蚀文：研习上古蚀文秘传，窥探符咒本源。',
-        '道': '大道：论经讲道，探讨天地至理与修行根本。',
-        '剑': '剑法：切磋剑道感悟，一剑破万法。',
-        '杂': '杂学：丹道、阵法、炼器等辅修杂项。',
-        '魔': '魔道：探讨灵门功法、剑走偏锋的修行方式。',
-        '威': '伏魔：斩妖除魔，交流护法威能。',
-        '棋': '对弈：以棋入道，在方寸之间演化阴阳。',
-        '宗': '宗门：交流门派见闻、修仙界的势力分布。',
-        '丽': '容颜：爱美之心人皆有之，驻颜有术。',
-        '尊': '尊师：尊师重道，谈论师门传承。',
-        '怜': '怜徒：提携后辈，讨论教导弟子的心得。',
-        '局': '大局：纵览东华洲大势，博弈天下。',
-        '闲': '闲情：修仙不仅是苦行，也有琴棋书画的雅趣。',
-        '法': '法术：演练奇门遁法，五行变化。',
-        '花': '花木：侍弄灵草，寄情于草木生灵。',
-        '器': '法宝：品鉴奇珍异宝，探讨祭炼之法。',
-        '争': '斗战：以战养战，交流实战与搏杀经验。'
-    };
+  const optionsDiv = document.getElementById('options');
+  const tooltip = document.getElementById('hobbyTooltip'); 
 
-    const optionsDiv = document.getElementById('options');
-    const tooltip = document.getElementById('hobbyTooltip');
+  optionsDiv.innerHTML = `<p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>${allOptions.map(hobby => `<button class="option hobby-tag" data-hobby="${hobby}">${hobby}</button>`).join('')}`; 
+  
+  document.querySelectorAll('.option').forEach(btn => { 
+    let pressTimer;
+    let isLongPress = false;
+
+    // --- 原有的点击逻辑（短按选择话题） ---
+    btn.addEventListener('click', function (e) { 
+      if (isLongPress) {
+        isLongPress = false;
+        return; 
+      }
+      tooltip.style.display = 'none'; 
+      const selectedHobby = this.getAttribute('data-hobby'); 
+      const isReal = realHobbies.includes(selectedHobby); 
+      handleHobbySelection(selectedHobby, isReal); 
+    }); 
     
-    optionsDiv.innerHTML = `
-        <p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>
-        ${allOptions.map(hobby => `<button class="option" data-hobby="${hobby}">${hobby}</button>`).join('')}
-    `;
-
-    document.querySelectorAll('.option').forEach(btn => {
-        let pressTimer = null;
-        let isLongPress = false; // 增加标志位，防止长按后松手触发点击
-
-        // --- 1. 点击逻辑 (Click) ---
-        btn.addEventListener('click', function (e) {
-            if (isLongPress) {
-                isLongPress = false; // 如果是长按结束后的抬起，不触发点击
-                return;
-            }
-            const hobby = this.getAttribute('data-hobby');
-            const isReal = realHobbies.includes(hobby);
-            tooltip.style.display = 'none';
-            handleHobbySelection(hobby, isReal);
-        });
-
-        // --- 2. 手机端触摸逻辑 ---
-        btn.addEventListener('touchstart', function (e) {
-            isLongPress = false;
-            const hobby = this.getAttribute('data-hobby');
-            
-            pressTimer = setTimeout(() => {
-                isLongPress = true; // 确定进入长按状态
-                const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
-                tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
-                tooltip.style.display = 'block';
-                
-                // 定位在屏幕上方
-                tooltip.style.left = '50%';
-                tooltip.style.top = '30%';
-                tooltip.style.transform = 'translateX(-50%)';
-                
-                // 触感反馈（如果设备支持）
-                if (navigator.vibrate) navigator.vibrate(20);
-            }, 500); // 500ms 判定为长按
-        }, {passive: true});
-
-        btn.addEventListener('touchend', function () {
-            clearTimeout(pressTimer);
-            // 延迟一点点隐藏，让眼睛能看清
-            setTimeout(() => { tooltip.style.display = 'none'; }, 100);
-        });
-
-        btn.addEventListener('touchmove', function () {
-            clearTimeout(pressTimer); // 只要手指动了，就不算长按
-        });
-
-        // --- 3. 电脑端逻辑 ---
-        btn.addEventListener('mouseenter', function (e) {
-            if (window.innerWidth >= 768) {
-                const hobby = this.getAttribute('data-hobby');
-                tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${hobbyDescriptions[hobby] || "..."}`;
-                tooltip.style.display = 'block';
-            }
-        });
-
-        btn.addEventListener('mousemove', function (e) {
-            if (window.innerWidth >= 768) {
-                tooltip.style.left = (e.clientX + 15) + 'px';
-                tooltip.style.top = (e.clientY + 15) + 'px';
-                tooltip.style.transform = 'none';
-            }
-        });
-
-        btn.addEventListener('mouseleave', function () {
-            if (window.innerWidth >= 768) tooltip.style.display = 'none';
-        });
-
-        // 彻底禁止默认菜单
-        btn.addEventListener('contextmenu', e => e.preventDefault());
+    // --- 💻 电脑端：悬浮显示逻辑 ---
+    btn.addEventListener('mouseenter', function(e) {
+      if (window.matchMedia("(hover: none)").matches) return;
+      const hobby = this.getAttribute('data-hobby');
+      const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
+      
+      tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
+      tooltip.style.display = 'block';
+      moveTooltip(e); 
     });
-}
 
-// ========== 4. 阵营对话逻辑 ==========
+    btn.addEventListener('mousemove', function(e) {
+      if (window.matchMedia("(hover: none)").matches) return;
+      moveTooltip(e);
+    });
 
-function getLowFavorSpecialLine(player, char) {
-    const pFaction = player.faction;
-    const pSect = player.sect;
-    const cFaction = char.faction;
-    const cSect = char.sect;
+    btn.addEventListener('mouseleave', function() {
+      if (window.matchMedia("(hover: none)").matches) return;
+      tooltip.style.display = 'none';
+    });
 
-    if (pSect === "野") {
-        if (cSect === "野") return "同是天涯沦落人。";
-        if (cFaction === "玄门" || cFaction === "灵门") return "。。。";
-    } else if (pFaction === "玄门" || pFaction === "灵门") {
-        if (cSect === "野") return "真人有礼。";
-        if (pFaction === cFaction) {
-            return pFaction === "玄门" ? "真人请让开。" : "道友客气。";
-        } else {
-            return (pFaction === "玄门" && cFaction === "灵门") ? "玄灵有别。" : "玄魔有别";
-        }
+    // --- 📱 移动端：长按显示解释逻辑 ---
+    btn.addEventListener('touchstart', function(e) {
+      isLongPress = false;
+      pressTimer = setTimeout(() => {
+        isLongPress = true;
+        if (navigator.vibrate) navigator.vibrate(50);
+        
+        const hobby = this.getAttribute('data-hobby');
+        const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
+        tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
+        tooltip.style.display = 'block';
+        
+        // 移动端长按时，让提示框固定在屏幕中央偏上，防止被手指挡住
+        tooltip.style.left = '50%';
+        tooltip.style.top = '30%';
+        tooltip.style.transform = 'translate(-50%, -50%)';
+      }, 400); 
+    });
+
+    btn.addEventListener('touchmove', function() {
+      clearTimeout(pressTimer); 
+    });
+
+    btn.addEventListener('touchend', function(e) {
+      clearTimeout(pressTimer);
+      if (isLongPress) {
+        e.preventDefault(); 
+        setTimeout(() => { tooltip.style.display = 'none'; }, 2500);
+      }
+    });
+
+    btn.addEventListener('contextmenu', function(e) {
+      e.preventDefault(); 
+    });
+  });
+
+  if (!window.hasTooltipTouchListener) {
+    document.addEventListener('touchstart', function(e) {
+      if (!e.target.closest('.option')) {
+        const globalTooltip = document.getElementById('hobbyTooltip');
+        if (globalTooltip) globalTooltip.style.display = 'none';
+      }
+    }, { passive: true });
+    window.hasTooltipTouchListener = true;
+  }
+
+  // 👇 这里是之前被删掉的定位函数，非常重要！
+  function moveTooltip(e) {
+    // 恢复 transform（因为移动端长按时修改了它）
+    tooltip.style.transform = 'none';
+    let x = e.clientX + 15;
+    let y = e.clientY + 15;
+    
+    if (x + 180 > window.innerWidth) {
+      x = e.clientX - 190;
     }
-    return null;
+    if (y + 100 > window.innerHeight) {
+      y = e.clientY - 110;
+    }
+
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+} // 👇 这个大括号也是之前被删掉的，保证函数闭合
+
+// ========== 好感≤20时的阵营特殊对话（用于错误话题） ==========
+function getLowFavorSpecialLine(player, char) {
+  const playerFaction = player.faction;
+  const playerSect = player.sect;
+  const charFaction = char.faction;
+  const charSect = char.sect;
+
+  if (playerSect === "野") {
+    if (charSect === "野") {
+      return "同是天涯沦落人。";
+    } else if (charFaction === "玄门" || charFaction === "灵门") {
+      return "。。。";
+    }
+  }
+  else if (playerFaction === "玄门" || playerFaction === "灵门") {
+    if (charSect === "野") {
+      return "真人有礼。";
+    }
+    if (playerFaction === charFaction) {
+      if (playerFaction === "玄门") {
+        return "真人请让开。";
+      } else if (playerFaction === "灵门") {
+        return "道友客气。";
+      }
+    }
+    else {
+      if (playerFaction === "玄门" && charFaction === "灵门") {
+        return "玄灵有别。";
+      } else if (playerFaction === "灵门" && charFaction === "玄门") {
+        return "玄魔有别";
+      }
+    }
+  }
+  return null;
 }
-
-// 辅助工具：字符串内标签格式化
-function formatHobbyTagInString(text) {
-    if (!text) return text;
-    return text.replace(/【([^】]+)】/g, '<span class="hobby-tag">【$1】</span>');
-}
-
-
