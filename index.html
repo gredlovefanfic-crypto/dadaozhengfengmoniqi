@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>大道攻略</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>大道相亲模拟器</h1>
+      <p class="subtitle">绝无玄灵宗门颜值修为歧视</p>
+    </div>
+
+    <div class="panel input-section">
+      <h2 class="panel-title">创建角色</h2>
+      <div class="input-group">
+        <input type="text" id="nameInput" placeholder="输入姓名 (如：秦墨白)" autocomplete="off">
+        <button id="startBtn" class="primary">开始</button>
+      </div>
+      <div id="status" class="status"></div>
+      <div id="playerInfo" style="display: none;">
+        <h3 class="panel-title">角色信息</h3>
+        <div id="characterDetails"></div>
+        <div id="insightDisplay" style="margin-top: 12px; padding: 8px 12px; border: 1.5px solid #222; background: #fafafa;">
+          <div id="inventorySection" style="margin-top: 12px; padding: 12px; border: 1.5px solid #222; background: #fff;">
+            <div style="font-weight: 700; border-bottom: 1px solid #eee; margin-bottom: 8px;">👝 乾坤袖囊</div>
+            <div id="inventoryList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+          </div>
+          <span style="font-weight: 700;">修为：</span><span id="playerCultivationVal">0</span>　
+          <span style="font-weight: 700;">感悟：</span><span id="playerInsightVal">0</span>/10　
+          <span style="font-weight: 700;">悟得：</span><span id="giftedHobbiesList">无</span>
+		  		  <!-- 新增：已用物品行 -->
+  <div style="margin-top: 4px;"><span style="font-weight: 700;">已用：</span><span id="usedGiftList">无</span></div>
+        <div id="progressContainer" class="progress-container">
+          <div class="progress-title">⚡ 迁羽量胜 ⚡</div>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-text" id="progressText">0/0 抽签</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel dialogue-section">
+      <h2 class="panel-title">结识道友</h2>
+      <div id="dialogueBox" class="dialogue-box"></div>
+      <div id="options" class="options"></div>
+      <div id="actionButtons" style="margin-top: 8px;">
+        <button id="newFriendBtn" class="primary" style="width: 100%;">抽取新道友</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">当前道友</h2>
+      <div id="currentCharacter" class="character-info"></div>
+    </div>
+
+    <div class="right-panel">
+      <div class="panel ranking-section">
+        <h2 class="panel-title">好感排行</h2>
+        <div id="rankingList" class="ranking-list"><p class="loading">暂无数据</p></div>
+      </div>
+      <div class="panel stats-section">
+        <h2 class="panel-title" style="margin-bottom: 8px;">统计 · 存档</h2>
+        <div class="stat-row">
+          <div class="stat-item"><span class="stat-name">已结识道友</span><span id="metCount" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-name">好感满值</span><span id="maxFavorCount" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-name">掌门满值</span><span id="sectMasterCount" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-name">当前互动</span><span id="currentInteraction" class="stat-value">无</span></div>
+        </div>
+        <div class="save-bar">
+          <button id="manualSaveBtn" class="save-btn">📀 保存进度</button>
+          <button id="clearSaveBtn" class="save-btn">🗑️ 重置并清除存档</button>
+          <span style="font-size:0.75rem; color:#444; margin-left:auto;">✨ 自动每步存档</span>
+        </div>
+        <div class="achievement-section">
+          <h2 class="panel-title" style="margin-bottom: 6px; font-size:1rem;">🏆 大道成就</h2>
+          <div id="achievementGrid" class="achievement-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史面板（放在container内部） -->
+    <div class="panel history-panel">
+      <h2 class="panel-title">知与不由</h2>
+      <div style="font-size: 0.8rem; color: #666; margin-bottom: 8px; line-height: 1.4;">
+        玉陵真人所留符诏，是其一缕神意所化，内寄此术。展动此术，可向其动问一事，只要答案不在那天地之外，又是玉陵真人不曾有意设阻之事，则必有所应。
+      </div>
+      <div class="history-content" id="historyContent">
+        <p class="other-message">符诏初展，一片混沌。</p>
+      </div>
+    </div>
+  </div> <!-- container结束 -->
+
+  <!-- 两个烟花div保留（不影响功能） -->
+  <div class="fireworks" id="fireworks"></div>
+  <div class="fireworks" id="fireworks2" style="display:none;"></div> <!-- 保留原结构，第二个其实用不到，但留着也不影响 -->
+
+  <div class="modal" id="successModal">
+    <div class="modal-content">
+      <h2 class="modal-title">大道之约</h2>
+      <div class="modal-message" id="modalMessage"></div>
+      <div class="modal-buttons" style="flex-direction: column; gap: 10px;">
+        <button id="companionBtn" style="background: #fff; color: #b22222; border-color: #b22222;">❤️ 结为道侣</button>
+        <button id="enemyBtn" style="background: #000; color: #fff;">💀 反目成仇</button>
+        <button id="continueBtn">暂时维持现状</button>
+        <button id="exitBtn" style="background: #fff; color: #000;">🚪 退出游戏</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="trialModal">
+    <div class="modal-content">
+      <h2 class="modal-title">无伤通关人劫</h2>
+      <div class="modal-message" id="trialMessage"></div>
+      <div class="modal-buttons">
+        <button id="continueTrialBtn">继续</button>
+        <button id="restartTrialBtn">重新开始</button>
+      </div>
+    </div>
+  </div>
+  <div id="hobbyTooltip" style="display:none; position:fixed; background:#333; color:#fff; padding:8px 12px; border-radius:20px; font-size:0.9rem; z-index:10000; pointer-events:none; box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
+<!-- 全局事件消息弹窗 -->
+<div class="modal" id="eventModal" style="display: none;">
+    <div class="modal-content">
+        <h2 class="modal-title">东华洲要闻</h2>
+        <div class="modal-message" id="eventModalMessage"></div>
+        <div class="modal-buttons" style="margin-top: 20px; justify-content: center;">
+            <button id="eventModalConfirmBtn" style="display: none; padding: 8px 25px; font-size: 1rem;">已知</button>
+        </div>
+    </div>
+</div>
+<script src="data.js"></script>
+<script src="utils.js"></script>
+<script src="character.js"></script>
+<script src="events.js"></script>      <!-- 先加载事件处理函数 -->
+<script src="gameState.js"></script>   <!-- 再加载 gameState -->
+<script src="ui.js"></script>
+<script src="dialogue.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

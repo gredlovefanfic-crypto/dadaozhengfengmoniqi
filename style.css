@@ -1,0 +1,302 @@
+/* =========================================
+   1. 基础全局设置与字体优化
+   ========================================= */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* 针对手机点击优化的属性 */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background: #fdfaf5; /* 略带纸张感的米白色 */
+    color: #1a1a1a;
+    font-family: "华文楷体", "KaiTi", "STKaiti", "PMingLiU", "宋体", serif;
+    line-height: 1.6;
+    font-size: 16px;
+    font-weight: 500;
+    padding: 20px 10px;
+    min-height: 100vh;
+}
+
+/* =========================================
+   2. 响应式布局容器 (核心适配)
+   ========================================= */
+.container {
+    max-width: 1000px; /* 网页端总宽度 */
+    width: 100%;
+    margin: 0 auto;
+    display: grid;
+    /* 网页端分两列：左侧主对话区，右侧排行统计区 */
+    grid-template-columns: 1fr 320px; 
+    gap: 20px;
+}
+
+/* 手机端适配 (屏幕宽度小于 850px) */
+@media (max-width: 850px) {
+    .container {
+        display: flex;
+        flex-direction: column; /* 改为垂直堆叠 */
+        gap: 16px;
+    }
+    
+    .right-panel {
+        width: 100%;
+        order: 10; /* 将统计和排行移到下方 */
+    }
+
+    body {
+        padding: 12px 8px;
+    }
+}
+
+/* =========================================
+   3. 修仙风格通用面板
+   ========================================= */
+.panel {
+    background: #fff;
+    border: 1.5px solid #222;
+    padding: 16px;
+    box-shadow: 2px 2px 0 #222;
+    margin-bottom: 4px;
+}
+
+.header {
+    grid-column: 1 / -1; /* 跨越两列 */
+    text-align: left;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #222;
+}
+
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+.panel-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 5px;
+}
+
+/* =========================================
+   4. 输入与按钮 (交互优化)
+   ========================================= */
+.input-group {
+    display: flex;
+    gap: 10px;
+}
+
+@media (max-width: 480px) {
+    .input-group { flex-direction: column; }
+}
+
+input {
+    flex: 1;
+    padding: 12px;
+    border: 1.5px solid #222;
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+button {
+    padding: 10px 20px;
+    background: #fff;
+    border: 1.5px solid #222;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+button:active {
+    transform: scale(0.96);
+    background: #000;
+    color: #fff;
+}
+
+button.primary {
+    background: #000;
+    color: #fff;
+}
+
+/* =========================================
+   5. 对话系统 (气泡流)
+   ========================================= */
+.dialogue-box {
+    background: #fff;
+    padding: 15px;
+    min-height: 200px;
+    overflow-y: auto;
+}
+
+.message-container {
+    display: flex;
+    margin-bottom: 15px;
+    align-items: flex-start;
+}
+
+.message-right { justify-content: flex-end; }
+
+.bubble {
+    max-width: 75%;
+    padding: 10px 14px;
+    border: 1px solid #222;
+    font-size: 0.95rem;
+    position: relative;
+    background: #f9f9f9;
+}
+
+.message-right .bubble {
+    background: #e8f5e9; /* 灵气感微绿 */
+    border-color: #2e7d32;
+}
+
+.avatar-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid #222;
+    border-radius: 50%;
+}
+
+.avatar-name { font-size: 0.7rem; color: #666; margin-top: 4px; }
+
+/* =========================================
+   6. 话题与 Tooltip (悬浮/触控优化)
+   ========================================= */
+.options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 0;
+}
+
+.option {
+    padding: 6px 14px;
+    background: #fff;
+    border: 1.5px solid #222;
+    font-size: 0.9rem;
+    user-select: none;
+}
+
+#hobbyTooltip {
+    display: none;
+    position: fixed;
+    background: rgba(30, 30, 30, 0.95);
+    color: #fff;
+    padding: 10px 15px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    z-index: 10001;
+    pointer-events: none;
+    border: 1px solid #c8a060;
+    max-width: 220px;
+    line-height: 1.5;
+}
+
+/* 手机端 Tooltip 强行居中显示，防止指尖遮挡 */
+@media (max-width: 768px) {
+    #hobbyTooltip {
+        left: 50% !important;
+        top: 30% !important;
+        transform: translateX(-50%);
+        max-width: 85%;
+    }
+}
+
+/* =========================================
+   7. 统计项目滚动条 (手机端横向滑动)
+   ========================================= */
+.stat-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 10px 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 隐藏横向滚动条但保留功能 */
+.stat-row::-webkit-scrollbar { display: none; }
+
+.stat-item {
+    flex: 0 0 auto;
+    background: #f0f0f0;
+    padding: 5px 12px;
+    border: 1px solid #ddd;
+    font-size: 0.85rem;
+}
+
+/* =========================================
+   8. 成就系统 (网格布局)
+   ========================================= */
+.achievement-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+@media (max-width: 400px) {
+    .achievement-grid { grid-template-columns: 1fr; }
+}
+
+.achievement-badge {
+    padding: 10px;
+    border: 1px solid #ccc;
+    background: #fafafa;
+}
+
+.achievement-badge.unlocked {
+    background: #fff9c4;
+    border-color: #fbc02d;
+}
+
+/* =========================================
+   9. 弹窗 (全屏遮罩适配)
+   ========================================= */
+.modal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    z-index: 9999;
+}
+
+.modal-content {
+    background: #fdf8e7;
+    border: 3px solid #8b5a2b;
+    padding: 25px;
+    max-width: 400px;
+    width: 100%;
+    border-radius: 0 20px 0 20px;
+}
+
+/* =========================================
+   10. 历史记录 (知与不由)
+   ========================================= */
+.history-content {
+    background: #fff;
+    border: 1px solid #333;
+    max-height: 150px;
+    overflow-y: auto;
+    padding: 8px;
+    font-size: 0.8rem;
+}
