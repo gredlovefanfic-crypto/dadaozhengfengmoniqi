@@ -1182,22 +1182,28 @@ function showEventModal(message) {
     const modal = document.getElementById('eventModal');
     const msgDiv = document.getElementById('eventModalMessage');
     const confirmBtn = document.getElementById('eventModalConfirmBtn');
+    const newFriendBtn = document.getElementById('newFriendBtn'); // 获取抽取按钮
+    
     if (!modal || !msgDiv || !confirmBtn) return;
 
-    // 重置状态：隐藏按钮，清除之前的定时器
     confirmBtn.style.display = 'none';
     if (window.eventModalTimer) clearTimeout(window.eventModalTimer);
 
     msgDiv.textContent = message;
     modal.style.display = 'flex';
 
-    // 2秒后显示“已知”按钮
     window.eventModalTimer = setTimeout(() => {
         confirmBtn.style.display = 'inline-block';
-        // 绑定点击事件：只关闭弹窗
         confirmBtn.onclick = function() {
             modal.style.display = 'none';
             confirmBtn.style.display = 'none';
+            
+            // --- 核心修复：关闭弹窗后恢复抽取按钮 ---
+            if (newFriendBtn) {
+                newFriendBtn.disabled = false;
+                newFriendBtn.style.opacity = '1';
+                newFriendBtn.style.cursor = 'pointer';
+            }
         };
     }, 2000);
 }
@@ -1231,3 +1237,4 @@ function gameOver() {
 	actionButtons.style.display = "block";
 
 }
+
