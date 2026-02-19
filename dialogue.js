@@ -148,40 +148,52 @@ function prepareHobbySelection() {
   };
 
   const optionsDiv = document.getElementById('options');
-  const tooltip = document.getElementById('hobbyTooltip'); // 获取 HTML 中的悬浮窗
+  const tooltip = document.getElementById('hobbyTooltip');
+  
+  // 用于记录手机端点击状态
+  let lastClickedHobby = null;
 
-  optionsDiv.innerHTML = `<p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>${allOptions.map(hobby => `<button class="option hobby-tag" data-hobby="${hobby}">${hobby}</button>`).join('')}`; 
+  optionsDiv.innerHTML = `<p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>${allOptions.map(hobby => `<button class="option" data-hobby="${hobby}">${hobby}</button>`).join('')}`; 
   
   document.querySelectorAll('.option').forEach(btn => { 
-    // --- 原有的点击逻辑 ---
-    btn.addEventListener('click', function () { 
-      tooltip.style.display = 'none'; // 点击后立即隐藏悬浮窗
+    // --- 1. 点击逻辑 (核心适配手机) ---
+    btn.addEventListener('click', function (e) { 
       const selectedHobby = this.getAttribute('data-hobby'); 
       const isReal = realHobbies.includes(selectedHobby); 
+      
+      // 如果是窄屏(手机)环境
+      if (window.innerWidth < 768) {
+        if (lastClickedHobby !== selectedHobby) {
+          // 第一次点击：只出解释，不触发对话
+          e.preventDefault();
+          lastClickedHobby = selectedHobby;
+          showTooltipLogic(selectedHobby, e);
+          return; // 拦截
+        }
+      }
+
+      // 第二次点击或电脑点击：执行选择
+      tooltip.style.display = 'none'; 
+      lastClickedHobby = null;
       handleHobbySelection(selectedHobby, isReal); 
     }); 
     
-    // --- 🏮 新增：悬浮显示逻辑 ---
+    // --- 2. 鼠标悬浮 (电脑端) ---
     btn.addEventListener('mouseenter', function(e) {
-      const hobby = this.getAttribute('data-hobby');
-      const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
-      
-      tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
-      tooltip.style.display = 'block';
-      
-      // 初始定位
-      moveTooltip(e);
+      if (window.innerWidth >= 768) {
+        showTooltipLogic(this.getAttribute('data-hobby'), e);
+      }
     });
 
     btn.addEventListener('mousemove', function(e) {
-      moveTooltip(e);
+      if (window.innerWidth >= 768) moveTooltip(e);
     });
 
     btn.addEventListener('mouseleave', function() {
       tooltip.style.display = 'none';
     });
-
-    // --- 移动端长按逻辑 (保持你原来的) ---
+    
+    // --- 3. 长按逻辑 (保持你原有的) ---
     btn.addEventListener('contextmenu', function(e) {
       e.preventDefault();
       const hobby = this.getAttribute('data-hobby');
@@ -190,23 +202,40 @@ function prepareHobbySelection() {
     });
   });
 
-  // 内部辅助函数：计算悬浮窗位置，防止出界
-  function moveTooltip(e) {
-    let x = e.clientX + 15;
-    let y = e.clientY + 15;
-    
-    // 如果太靠右，就往左移
-    if (x + 180 > window.innerWidth) {
-      x = e.clientX - 190;
-    }
-    // 如果太靠下，就往上移
-    if (y + 100 > window.innerHeight) {
-      y = e.clientY - 110;
-    }
-
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
+  // 显示 Tooltip 的统一逻辑
+  function showTooltipLogic(hobby, e) {
+    const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
+    tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}${window.innerWidth < 768 ? '<br><span style="color:#ffb347;font-size:0.7rem;">(再次点击确认选择)</span>' : ''}`;
+    tooltip.style.display = 'block';
+    moveTooltip(e);
   }
+
+  // 计算位置逻辑
+  function moveTooltip(e) {
+    if (window.innerWidth < 768) {
+        // 手机端居中显示，不受鼠标/指尖位置干扰
+        tooltip.style.left = '50%';
+        tooltip.style.top = '30%';
+        tooltip.style.transform = 'translateX(-50%)';
+    } else {
+        // 电脑端跟随鼠标
+        let x = e.clientX + 15;
+        let y = e.clientY + 15;
+        if (x + 200 > window.innerWidth) x = e.clientX - 210;
+        if (y + 100 > window.innerHeight) y = e.clientY - 110;
+        tooltip.style.left = x + 'px';
+        tooltip.style.top = y + 'px';
+        tooltip.style.transform = 'none';
+    }
+  }
+
+  // 点击空白处关闭解释
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('option')) {
+      tooltip.style.display = 'none';
+      lastClickedHobby = null;
+    }
+  }, { once: true });
 }
 
 // ========== 好感≤20时的阵营特殊对话（用于错误话题） ==========
@@ -243,4 +272,5 @@ function getLowFavorSpecialLine(player, char) {
     }
   }
   return null;
+
 }
