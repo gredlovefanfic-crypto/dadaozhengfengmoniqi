@@ -155,44 +155,53 @@ function prepareHobbySelection() {
     `;
 
     document.querySelectorAll('.option').forEach(btn => {
-        let pressTimer; // 用于长按计时
+        let pressTimer = null;
+        let isLongPress = false; // 增加标志位，防止长按后松手触发点击
 
-        // --- 1. 点击事件：直接选择 ---
-        btn.addEventListener('click', function () {
+        // --- 1. 点击逻辑 (Click) ---
+        btn.addEventListener('click', function (e) {
+            if (isLongPress) {
+                isLongPress = false; // 如果是长按结束后的抬起，不触发点击
+                return;
+            }
             const hobby = this.getAttribute('data-hobby');
             const isReal = realHobbies.includes(hobby);
             tooltip.style.display = 'none';
             handleHobbySelection(hobby, isReal);
         });
 
-        // --- 2. 长按逻辑 (手机端) ---
+        // --- 2. 手机端触摸逻辑 ---
         btn.addEventListener('touchstart', function (e) {
+            isLongPress = false;
             const hobby = this.getAttribute('data-hobby');
-            // 设置长按 400ms 后触发
+            
             pressTimer = setTimeout(() => {
+                isLongPress = true; // 确定进入长按状态
                 const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
                 tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
                 tooltip.style.display = 'block';
                 
-                // 手机端提示框位置：显示在按钮上方，防止手指遮挡
+                // 定位在屏幕上方
                 tooltip.style.left = '50%';
                 tooltip.style.top = '30%';
                 tooltip.style.transform = 'translateX(-50%)';
-            }, 400); 
-        });
+                
+                // 触感反馈（如果设备支持）
+                if (navigator.vibrate) navigator.vibrate(20);
+            }, 500); // 500ms 判定为长按
+        }, {passive: true});
 
-        // 手指抬起或移动，取消长按计时，并隐藏提示
         btn.addEventListener('touchend', function () {
             clearTimeout(pressTimer);
-            tooltip.style.display = 'none';
+            // 延迟一点点隐藏，让眼睛能看清
+            setTimeout(() => { tooltip.style.display = 'none'; }, 100);
         });
 
         btn.addEventListener('touchmove', function () {
-            clearTimeout(pressTimer);
-            tooltip.style.display = 'none';
+            clearTimeout(pressTimer); // 只要手指动了，就不算长按
         });
 
-        // --- 3. 悬浮逻辑 (电脑端) ---
+        // --- 3. 电脑端逻辑 ---
         btn.addEventListener('mouseenter', function (e) {
             if (window.innerWidth >= 768) {
                 const hobby = this.getAttribute('data-hobby');
@@ -210,15 +219,14 @@ function prepareHobbySelection() {
         });
 
         btn.addEventListener('mouseleave', function () {
-            if (window.innerWidth >= 768) {
-                tooltip.style.display = 'none';
-            }
+            if (window.innerWidth >= 768) tooltip.style.display = 'none';
         });
 
-        // 屏蔽手机浏览器的默认长按菜单
+        // 彻底禁止默认菜单
         btn.addEventListener('contextmenu', e => e.preventDefault());
     });
 }
+
 // ========== 4. 阵营对话逻辑 ==========
 
 function getLowFavorSpecialLine(player, char) {
@@ -246,4 +254,5 @@ function formatHobbyTagInString(text) {
     if (!text) return text;
     return text.replace(/【([^】]+)】/g, '<span class="hobby-tag">【$1】</span>');
 }
+
 
