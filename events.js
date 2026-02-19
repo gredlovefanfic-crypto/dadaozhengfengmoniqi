@@ -1238,3 +1238,41 @@ function gameOver() {
 
 }
 
+// 在 events.js 中添加，用于处理点杀后的弹窗和按钮恢复
+function handleQianYuKill(victim, victimName) {
+    const modal = document.getElementById('eventModal');
+    const modalTitle = document.querySelector('#eventModal .modal-title');
+    const msgDiv = document.getElementById('eventModalMessage');
+    const confirmBtn = document.getElementById('eventModalConfirmBtn');
+    const newFriendBtn = document.getElementById('newFriendBtn');
+
+    const spellDesc = `“迁羽量胜”之术发动！一羽定天机！`;
+    const fullMessage = `${spellDesc}\n\n💀 噩耗！${victimName} 真人不幸陨落！`;
+
+    modalTitle.textContent = '⚡ 迁羽量胜 ⚡';
+    msgDiv.textContent = fullMessage;
+    modal.style.display = 'flex';
+
+    setTimeout(() => {
+        confirmBtn.style.display = 'inline-block';
+        confirmBtn.onclick = function() {
+            modal.style.display = 'none';
+            
+            // 清理已死角色数据
+            gameState.allCharacters = gameState.allCharacters.filter(c => 
+                !(c.surname === victim.surname && c.name === victim.name)
+            );
+            
+            // 恢复按钮状态
+            if (newFriendBtn) {
+                newFriendBtn.disabled = false;
+                newFriendBtn.style.opacity = '1';
+                newFriendBtn.style.cursor = 'pointer';
+            }
+            
+            saveGame();
+            updateRanking();
+            updateStats();
+        };
+    }, 2000);
+}
