@@ -75,11 +75,10 @@ function getAvailableCharacters() {
 
 // ---------- 1.5 核心改动：分离要闻检测 ----------
 function checkAndTriggerNewsAlert() {
-    // 如果已经有要闻在排队，就不再触发
     if (gameState.newsReady) return; 
     
-    if (gameState.eventMessageIndex !== undefined && gameState.eventMessageIndex < gameData.globalEventMessages.length) {
-        // 每次行动有 3% 概率触发要闻排队
+    // 增加 gameData.globalEventMessages 存在性安全检查
+    if (gameData.globalEventMessages && gameState.eventMessageIndex !== undefined && gameState.eventMessageIndex < gameData.globalEventMessages.length) {
         if (Math.random() < 0.03) { 
             gameState.newsReady = true;
             const btn = document.getElementById('newFriendBtn');
@@ -94,7 +93,6 @@ function checkAndTriggerNewsAlert() {
 function meetNewCharacter() {
     const newFriendBtn = document.getElementById('newFriendBtn');
     
-    // 【拦截检查】：如果按钮现在是“查阅要闻”状态，点它就只显示要闻，不抽人！
     if (gameState.newsReady) {
         if (newFriendBtn) {
             newFriendBtn.disabled = true;
@@ -103,15 +101,14 @@ function meetNewCharacter() {
         }
         const message = gameData.globalEventMessages[gameState.eventMessageIndex];
         gameState.eventMessageIndex++;
-        gameState.newsReady = false; // 重置状态
+        gameState.newsReady = false; 
         
         addToHistory(`<p class="other-message" style="background:#e6f7ff;">📰 东华洲要闻：${message}</p>`);
         saveGame();
-        showEventModal(message); // 弹窗关闭时会把按钮变回“抽取新道友”
+        showEventModal(message); 
         return; 
     }
 
-    // 正常抽取前置处理
     if (newFriendBtn) {
         newFriendBtn.disabled = true;
         newFriendBtn.style.opacity = '0.6';
@@ -129,8 +126,10 @@ function meetNewCharacter() {
     }
 
     try {
-        // ---------- 触发“迁羽量胜”判断 ----------
-        if (gameState.eventMessageIndex >= gameData.globalEventMessages.length) {
+        // 获取数组，如果不存在就给个空数组保底防止报错
+        const messages = gameData.globalEventMessages || [];
+        
+        if (gameState.eventMessageIndex >= messages.length) {
             let qianYuProb = 0.005; 
             if (gameState.trialPassModalShown) qianYuProb = 0;
 
@@ -150,7 +149,6 @@ function meetNewCharacter() {
             }
         }
 
-        // ---------- 正常抽取 ----------
         const available = getAvailableCharacters();
         if (available.length === 0) {
             addSystemMessage(`暂无其他真人可结识（皆已大道圆满）。`);
@@ -217,7 +215,6 @@ function meetNewCharacter() {
         updateStats();
         updateRanking();
         
-        // 抽取结束，检查是否要预报下一条要闻
         checkAndTriggerNewsAlert();
         saveGame();
 
@@ -389,13 +386,12 @@ function handleHobbySelection(selectedHobby, isReal) {
             else if (favorChange < 0) addSystemMessage(`好感度 ${favorChange}`);
             else addSystemMessage(`好感度无变化`);
 
+            // ===== 降级拦截 1：好感降为 0 时的挽回弹窗 =====
             if (charData.relation === 'companion' && charData.favor <= 0) {
                 let userWantsToSave = false;
                 try {
-                    // 尝试呼出原生确认框
                     userWantsToSave = confirm(`你和 ${charId} 的关系已降至冰点！是否愿意消耗10点修为挽回这段感情？`);
                 } catch (e) {
-                    // 如果被微信/Webview拦截报错，默认当做“不挽回”处理
                     console.warn("环境拦截了confirm弹窗", e);
                     userWantsToSave = false; 
                 }
@@ -407,7 +403,6 @@ function handleHobbySelection(selectedHobby, isReal) {
                         addSystemMessage(`你消耗10点修为，与 ${charId} 重归于好。`);
                         addToHistory(`<p class="special-dialogue">你消耗10点修为，与 ${charId} 重归于好。</p>`);
                     } else {
-                        // 【重要】把 alert 换成内部 UI 提示，防止 alert 也被拦截导致假死
                         addSystemMessage(`⚠️ 修为不足10点，无法挽回。`); 
                         charData.relation = 'enemy';
                         charData.favor = 0;
@@ -432,7 +427,15 @@ function handleHobbySelection(selectedHobby, isReal) {
             charData.favorMaxed = true;
 
             if (charData.relation === 'enemy') {
-                if (confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`)) {
+                // ===== 降级拦截 2：仇敌变道侣弹窗 =====
+                let userWantsToMakeUp = false;
+                try {
+                    userWantsToMakeUp = confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`);
+                } catch (e) {
+                    userWantsToMakeUp = false;
+                }
+
+                if (userWantsToMakeUp) {
                     if (gameState.player.cultivation >= 10) {
                         gameState.player.cultivation -= 10;
                         charData.relation = 'companion';
@@ -455,7 +458,7 @@ function handleHobbySelection(selectedHobby, isReal) {
                         updateTrialProgress();
                         saveGame();
                     } else {
-                        alert(`修为不足10点，无法重修。`);
+                        addSystemMessage(`⚠️ 修为不足10点，无法重修。`);
                     }
                 }
             } else {
@@ -545,7 +548,6 @@ function handleHobbySelection(selectedHobby, isReal) {
             else addSystemMessage(`已交流1次，请抽取新道友。`);
         }
         
-        // 动作结束，检查预报要闻
         checkAndTriggerNewsAlert();
         saveGame();
         checkAchievements();   
@@ -597,7 +599,15 @@ window.useItem = function(index) {
       if (charData.favor >= 100 && !charData.favorMaxed) {
           charData.favorMaxed = true;
           if (charData.relation === 'enemy') {
-              if (confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`)) {
+              // ===== 降级拦截 3：物品使用时满好感变道侣弹窗 =====
+              let userWantsToMakeUp = false;
+              try {
+                  userWantsToMakeUp = confirm(`你与 ${charId} 好感已满，但你们现在是仇敌。是否愿意消耗10点修为，与对方重修旧好？`);
+              } catch (e) {
+                  userWantsToMakeUp = false;
+              }
+
+              if (userWantsToMakeUp) {
                   if (gameState.player.cultivation >= 10) {
                       gameState.player.cultivation -= 10;
                       charData.relation = 'companion';
@@ -617,7 +627,7 @@ window.useItem = function(index) {
                       updateTrialProgress();
                       saveGame();
                   } else {
-                      alert(`修为不足10点，无法重修。`);
+                      addSystemMessage(`⚠️ 修为不足10点，无法重修。`);
                   }
               }
           } else {
@@ -732,35 +742,28 @@ function showSuccessModal(charName) {
         newFriendBtn.style.cursor = 'not-allowed';
     }
 
-    // ==========================================
-    // 👇👇👇 修复假死错觉的核心修改部分 👇👇👇
-    // ==========================================
     setModalButtonsEnabled(false);
     
-    // 1. 获取按钮并给出视觉反馈，防止玩家以为游戏卡死
+    // 获取按钮并给出视觉反馈
     const companionBtn = document.getElementById('companionBtn');
-    // 保存原本的按钮文字（防备原本叫别的名字）
     const originalText = companionBtn ? companionBtn.textContent : '❤️ 结为道侣'; 
     if (companionBtn) {
         companionBtn.textContent = '💓 心动中...'; 
     }
 
-    // 2. 将原本的 3000ms (3秒) 缩短为 800ms (0.8秒)
+    // 缩短为 800ms，并恢复文案
     successModalTimer = setTimeout(() => {
         setModalButtonsEnabled(true);
-        // 3. 倒计时结束后恢复原本的按钮文字
         if (companionBtn) {
             companionBtn.textContent = originalText;
         }
         successModalTimer = null;
     }, 800); 
-    // ==========================================
-    // 👆👆👆 修改结束 👆👆👆
-    // ==========================================
 
     showFireworks(); 
     updateStats(); 
 }
+
 // ========== 关系设置 ==========
 let isSettingRelation = false;
 function setRelation(type) {
@@ -1074,7 +1077,6 @@ function showEventModal(message) {
     msgDiv.textContent = message;
     modal.style.display = 'flex';
 
-    // 修复 1：去掉延迟，立刻显示“已知”按钮
     confirmBtn.style.display = 'inline-block';
     
     if (window.eventModalTimer) clearTimeout(window.eventModalTimer);
@@ -1083,7 +1085,6 @@ function showEventModal(message) {
         modal.style.display = 'none';
         confirmBtn.style.display = 'none';
         
-        // 修复 2：按完已知后，按钮变回“抽取新道友”且恢复可用
         if (newFriendBtn) {
             newFriendBtn.textContent = '抽取新道友';
             newFriendBtn.disabled = false;
@@ -1132,7 +1133,6 @@ function handleQianYuKill(victim, victimName) {
                 }
                 if (gameState.qianYuKillCount !== undefined) gameState.qianYuKillCount++;
                 
-                // 恢复按钮状态（点杀算作探索中的意外，所以文字不修改，只恢复可点）
                 if (newFriendBtn) {
                     newFriendBtn.disabled = false;
                     newFriendBtn.style.opacity = '1';
@@ -1173,5 +1173,3 @@ function gameOver() {
     const actionButtons = document.getElementById('actionButtons');
     if (actionButtons) actionButtons.style.display = "block";
 }
-
-
