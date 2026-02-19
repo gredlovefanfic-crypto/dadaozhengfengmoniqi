@@ -112,11 +112,6 @@ function loadHistory() {
     }
 }
 
-function formatHobbyTagInString(text) { 
-    if (!text) return text; 
-    return text.replace(/【([^】]+)】/g, '<span class="hobby-tag">【$1】</span>'); 
-}
-
 function prepareHobbySelection() {
   const char = gameState.currentCharacter; 
   const realHobbies = [...char.hobbies]; 
@@ -150,91 +145,77 @@ function prepareHobbySelection() {
   const optionsDiv = document.getElementById('options');
   const tooltip = document.getElementById('hobbyTooltip');
   
-  // 用于记录手机端点击状态
-  let lastClickedHobby = null;
+  // 关键：用于记录当前“锁定”的话题
+  let activeHobby = null;
 
   optionsDiv.innerHTML = `<p style="margin-bottom:8px; color:#333; font-weight:600;">请选择一个话题：</p>${allOptions.map(hobby => `<button class="option" data-hobby="${hobby}">${hobby}</button>`).join('')}`; 
   
   document.querySelectorAll('.option').forEach(btn => { 
-    // --- 1. 点击逻辑 (核心适配手机) ---
     btn.addEventListener('click', function (e) { 
+      // 阻止冒泡，防止触发全局点击隐藏逻辑
+      e.stopPropagation();
+      
       const selectedHobby = this.getAttribute('data-hobby'); 
       const isReal = realHobbies.includes(selectedHobby); 
-      
-      // 如果是窄屏(手机)环境
-      if (window.innerWidth < 768) {
-        if (lastClickedHobby !== selectedHobby) {
-          // 第一次点击：只出解释，不触发对话
-          e.preventDefault();
-          lastClickedHobby = selectedHobby;
-          showTooltipLogic(selectedHobby, e);
-          return; // 拦截
+
+      // --- 核心逻辑：双击/确认机制 ---
+      if (activeHobby !== selectedHobby) {
+        // 第一步：如果是第一次点，或者换了一个点，只显示解释，不选中
+        activeHobby = selectedHobby;
+        
+        // 样式反馈：取消其他按钮的高亮，高亮当前按钮
+        document.querySelectorAll('.option').forEach(b => b.style.borderColor = '#222');
+        this.style.borderColor = '#b22222'; // 变成暗红色提醒
+
+        // 显示解释框
+        const desc = hobbyDescriptions[selectedHobby] || "此话题深不可测...";
+        tooltip.innerHTML = `<strong>【${selectedHobby}】</strong><br>${desc}<br><span style="color:#ffb347; font-size:0.75rem; margin-top:5px; display:block;">再次点击确认选择</span>`;
+        tooltip.style.display = 'block';
+
+        // 定位解释框
+        if (window.innerWidth < 768) {
+          tooltip.style.left = '50%';
+          tooltip.style.top = '35%';
+          tooltip.style.transform = 'translateX(-50%)';
+        } else {
+          // 电脑端点击也显示在鼠标附近
+          tooltip.style.left = (e.clientX + 10) + 'px';
+          tooltip.style.top = (e.clientY + 10) + 'px';
+          tooltip.style.transform = 'none';
         }
+        return; // 结束函数，不往下走执行 handleHobbySelection
       }
 
-      // 第二次点击或电脑点击：执行选择
+      // 第二步：如果 activeHobby 等于 selectedHobby，说明是第二次点，执行选中
       tooltip.style.display = 'none'; 
-      lastClickedHobby = null;
+      activeHobby = null; 
       handleHobbySelection(selectedHobby, isReal); 
     }); 
-    
-    // --- 2. 鼠标悬浮 (电脑端) ---
-    btn.addEventListener('mouseenter', function(e) {
-      if (window.innerWidth >= 768) {
-        showTooltipLogic(this.getAttribute('data-hobby'), e);
-      }
-    });
 
-    btn.addEventListener('mousemove', function(e) {
-      if (window.innerWidth >= 768) moveTooltip(e);
+    // 电脑端保留悬浮，但不影响点击逻辑
+    btn.addEventListener('mouseenter', function(e) {
+      if (window.innerWidth >= 768 && activeHobby === null) {
+        const hobby = this.getAttribute('data-hobby');
+        const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
+        tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}`;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 15) + 'px';
+        tooltip.style.top = (e.clientY + 15) + 'px';
+      }
     });
 
     btn.addEventListener('mouseleave', function() {
-      tooltip.style.display = 'none';
-    });
-    
-    // --- 3. 长按逻辑 (保持你原有的) ---
-    btn.addEventListener('contextmenu', function(e) {
-      e.preventDefault();
-      const hobby = this.getAttribute('data-hobby');
-      const desc = hobbyDescriptions[hobby] || hobby;
-      addSystemMessage(`【${hobby}】 - ${desc}`);
+      if (window.innerWidth >= 768 && activeHobby === null) {
+        tooltip.style.display = 'none';
+      }
     });
   });
 
-  // 显示 Tooltip 的统一逻辑
-  function showTooltipLogic(hobby, e) {
-    const desc = hobbyDescriptions[hobby] || "此话题深不可测...";
-    tooltip.innerHTML = `<strong>【${hobby}】</strong><br>${desc}${window.innerWidth < 768 ? '<br><span style="color:#ffb347;font-size:0.7rem;">(再次点击确认选择)</span>' : ''}`;
-    tooltip.style.display = 'block';
-    moveTooltip(e);
-  }
-
-  // 计算位置逻辑
-  function moveTooltip(e) {
-    if (window.innerWidth < 768) {
-        // 手机端居中显示，不受鼠标/指尖位置干扰
-        tooltip.style.left = '50%';
-        tooltip.style.top = '30%';
-        tooltip.style.transform = 'translateX(-50%)';
-    } else {
-        // 电脑端跟随鼠标
-        let x = e.clientX + 15;
-        let y = e.clientY + 15;
-        if (x + 200 > window.innerWidth) x = e.clientX - 210;
-        if (y + 100 > window.innerHeight) y = e.clientY - 110;
-        tooltip.style.left = x + 'px';
-        tooltip.style.top = y + 'px';
-        tooltip.style.transform = 'none';
-    }
-  }
-
-  // 点击空白处关闭解释
-  document.addEventListener('click', function(e) {
-    if (!e.target.classList.contains('option')) {
-      tooltip.style.display = 'none';
-      lastClickedHobby = null;
-    }
+  // 全局点击：点空白处取消当前选中的话题和解释
+  document.addEventListener('click', () => {
+    tooltip.style.display = 'none';
+    activeHobby = null;
+    document.querySelectorAll('.option').forEach(b => b.style.borderColor = '#222');
   }, { once: true });
 }
 
@@ -274,3 +255,4 @@ function getLowFavorSpecialLine(player, char) {
   return null;
 
 }
+
