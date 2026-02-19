@@ -721,16 +721,35 @@ function showSuccessModal(charName) {
         newFriendBtn.style.cursor = 'not-allowed';
     }
 
+    // ==========================================
+    // 👇👇👇 修复假死错觉的核心修改部分 👇👇👇
+    // ==========================================
     setModalButtonsEnabled(false);
+    
+    // 1. 获取按钮并给出视觉反馈，防止玩家以为游戏卡死
+    const companionBtn = document.getElementById('companionBtn');
+    // 保存原本的按钮文字（防备原本叫别的名字）
+    const originalText = companionBtn ? companionBtn.textContent : '❤️ 结为道侣'; 
+    if (companionBtn) {
+        companionBtn.textContent = '💓 心动中...'; 
+    }
+
+    // 2. 将原本的 3000ms (3秒) 缩短为 800ms (0.8秒)
     successModalTimer = setTimeout(() => {
         setModalButtonsEnabled(true);
+        // 3. 倒计时结束后恢复原本的按钮文字
+        if (companionBtn) {
+            companionBtn.textContent = originalText;
+        }
         successModalTimer = null;
-    }, 3000);
+    }, 800); 
+    // ==========================================
+    // 👆👆👆 修改结束 👆👆👆
+    // ==========================================
 
     showFireworks(); 
     updateStats(); 
 }
-
 // ========== 关系设置 ==========
 let isSettingRelation = false;
 function setRelation(type) {
@@ -1143,3 +1162,4 @@ function gameOver() {
     const actionButtons = document.getElementById('actionButtons');
     if (actionButtons) actionButtons.style.display = "block";
 }
+
