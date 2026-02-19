@@ -72,250 +72,102 @@ function getAvailableCharacters() {
 }
 
 function meetNewCharacter() {
-    // 先禁用抽取按钮
+    // 1. 获取并禁用抽取按钮（确保 UI 反馈）
     const newFriendBtn = document.getElementById('newFriendBtn');
     const actionButtons = document.getElementById('actionButtons');
-    newFriendBtn.disabled = true;
-    newFriendBtn.style.opacity = '0.6';
-    newFriendBtn.style.cursor = 'not-allowed';
-	
-	// 新增：检查玩家是否存在
+    if (newFriendBtn) {
+        newFriendBtn.disabled = true;
+        newFriendBtn.style.opacity = '0.6';
+        newFriendBtn.style.cursor = 'not-allowed';
+    }
+
+    // 2. 基础安全检查
     if (!gameState.player) {
         addSystemMessage("请先创建角色。");
-        // 恢复按钮状态（可选）
-        newFriendBtn.disabled = false;
-        newFriendBtn.style.opacity = '1';
-        newFriendBtn.style.cursor = 'pointer';
-        return;
-    }
-
-    // ---------- 2%概率触发东华洲要闻 ----------
-    if (gameState.eventMessageIndex !== undefined && 
-    gameState.eventMessageIndex < gameData.globalEventMessages.length) {
-    if (Math.random() < 0.025) {
-        const message = gameData.globalEventMessages[gameState.eventMessageIndex];
-        showEventModal(message);
-        // 添加到历史记录
-        addToHistory(`<p class="other-message" style="background:#e6f7ff;">📰 东华洲要闻：${message}</p>`);
-        gameState.eventMessageIndex++;
-        saveGame();
-    }
-}
-
-    // ---------- 所有消息播完后，触发“迁羽量胜” ----------
-if (gameState.eventMessageIndex >= gameData.globalEventMessages.length) {
-    // 先定义点杀概率变量
-    let qianYuProb = 0.005; // 默认概率（测试用50%，正式版可改为0.005）
-    
-    // 如果已经通关，概率设为0
-    if (gameState.trialPassModalShown) {
-        qianYuProb = 0;
-    }
-
-    // 用变量判断是否触发点杀
-    if (Math.random() < qianYuProb) {
-        const exemptNames = ["张衍", "秦墨白", "岳轩霄", "周阳廷", "梁循义", "沈崇"];
-        
-        // 可杀的NPC
-        let killableNPCs = gameState.allCharacters.filter(c => {
-            const fullName = c.surname + c.name;
-            return !exemptNames.includes(fullName);
-        });
-
-        // 玩家是否可杀
-        let playerIsKillable = false;
-        if (gameState.player) {
-            const playerFullName = gameState.player.surname + gameState.player.name;
-            if (!exemptNames.includes(playerFullName) && gameState.player.cultivation < 90) {
-                playerIsKillable = true;
-            }
-        }
-
-        // 如果没有可杀目标，直接恢复按钮并退出
-        if (killableNPCs.length === 0 && !playerIsKillable) {
-            addSystemMessage(`“迁羽量胜”之术掠过，却无人可撼。`);
+        if (newFriendBtn) {
             newFriendBtn.disabled = false;
             newFriendBtn.style.opacity = '1';
             newFriendBtn.style.cursor = 'pointer';
-            actionButtons.style.display = "block";
+        }
+        return;
+    }
+
+    // 3. 将核心逻辑放入 try...finally，确保无论如何都会恢复按钮状态
+    try {
+        // ---------- 概率触发东华洲要闻 ----------
+        if (gameState.eventMessageIndex !== undefined && 
+            gameState.eventMessageIndex < gameData.globalEventMessages.length) {
+            if (Math.random() < 0.025) {
+                const message = gameData.globalEventMessages[gameState.eventMessageIndex];
+                showEventModal(message);
+                addToHistory(`<p class="other-message" style="background:#e6f7ff;">📰 东华洲要闻：${message}</p>`);
+                gameState.eventMessageIndex++;
+                saveGame();
+            }
+        }
+
+        // ---------- 触发“迁羽量胜”判断 ----------
+        if (gameState.eventMessageIndex >= gameData.globalEventMessages.length) {
+            let qianYuProb = 0.005; 
+            if (gameState.trialPassModalShown) qianYuProb = 0;
+
+            if (Math.random() < qianYuProb) {
+                const exemptNames = ["张衍", "秦墨白", "岳轩霄", "周阳廷", "梁循义", "沈崇"];
+                let killableNPCs = gameState.allCharacters.filter(c => !exemptNames.includes(c.surname + c.name));
+                
+                let playerIsKillable = false;
+                const playerFullName = gameState.player.surname + gameState.player.name;
+                if (!exemptNames.includes(playerFullName) && gameState.player.cultivation < 90) {
+                    playerIsKillable = true;
+                }
+
+                if (killableNPCs.length > 0 || playerIsKillable) {
+                    let candidates = killableNPCs.map(c => ({ ...c, isPlayer: false }));
+                    if (playerIsKillable) candidates.push({ ...gameState.player, isPlayer: true });
+
+                    const victim = getRandomElement(candidates);
+                    const victimName = victim.surname + victim.name;
+                    
+                    // 这里直接调用已经写好的逻辑，但注意：
+                    // 在弹窗的 confirmBtn.onclick 中必须包含恢复按钮的代码
+                    // 为了简化，这里我们触发点杀后不执行后续抽取，直接 return
+                    handleQianYuKill(victim, victimName); 
+                    return; // 结束本次函数，由弹窗回调恢复按钮
+                }
+            }
+        }
+
+        // ---------- 正常抽取流程 ----------
+        const available = getAvailableCharacters();
+        if (available.length === 0) {
+            addSystemMessage(`暂无其他真人可结识（皆已大道圆满）。`);
             return;
         }
 
-        // 构建候选列表
-        let candidates = [];
-        killableNPCs.forEach(c => candidates.push({ ...c, isPlayer: false }));
-        if (playerIsKillable) {
-            candidates.push({ ...gameState.player, isPlayer: true });
-        }
-
-        const victim = getRandomElement(candidates);
-        const victimName = victim.surname + victim.name;
-        const isPlayerVictim = victim.isPlayer;
-
-        // 构建弹窗消息
-        const spellDesc = `“迁羽量胜”之术发动！轻鸿知玄意，万化藏道奇，周游妙无穷，一羽定天机！`;
-        let fullMessage = spellDesc;
-        if (isPlayerVictim) {
-            fullMessage += `\n\n💀 不幸！你被“迁羽量胜”之术选中，气数已尽，当场陨落！`;
-            gameState.qianYuKillCount++;
-        } else {
-    fullMessage += `\n\n💀 噩耗！${victimName} 真人被“迁羽量胜”之术击中，当场陨落！`;
-    gameState.qianYuKillCount++;
-    // ===== 新增：道侣被杀的额外提醒 =====
-    const metData = gameState.metCharacters.get(victimName);
-    if (metData && metData.relation === 'companion') {
-        fullMessage += `\n\n😢 那是你的道侣！你心如刀绞！`;
-		gameState.killedCompanions = (gameState.killedCompanions || 0) + 1;  // 计数+1
-    }
-
-            // 显示弹窗
-            const modal = document.getElementById('eventModal');
-            const modalTitle = document.querySelector('#eventModal .modal-title');
-            const msgDiv = document.getElementById('eventModalMessage');
-            const confirmBtn = document.getElementById('eventModalConfirmBtn');
-
-            if (modal && modalTitle && msgDiv && confirmBtn) {
-                modalTitle.textContent = '⚡ 迁羽量胜 ⚡';
-                msgDiv.textContent = fullMessage;
-                confirmBtn.style.display = 'none';
-                if (window.eventModalTimer) clearTimeout(window.eventModalTimer);
-                modal.style.display = 'flex';
-
-                window.eventModalTimer = setTimeout(() => {
-                    confirmBtn.style.display = 'inline-block';
-                    confirmBtn.onclick = function() {
-                        modal.style.display = 'none';
-                        confirmBtn.style.display = 'none';
-                        if (isPlayerVictim) {
-                            gameOver(); // 玩家死亡
-                        } else {
-                            // NPC死亡：清理角色数据
-                            gameState.allCharacters = gameState.allCharacters.filter(c => 
-                                !(c.surname === victim.surname && c.name === victim.name)
-                            );
-                            if (gameState.metCharacters.has(victimName)) {
-                                gameState.metCharacters.delete(victimName);
-                                // 如果被杀的人正好是当前在聊的人，清空界面
-                                if (gameState.currentCharacter && 
-    gameState.currentCharacter.surname === victim.surname && 
-    gameState.currentCharacter.name === victim.name) {
-    gameState.currentCharacter = null;
-    document.getElementById('currentCharacter').innerHTML = '';
-    document.getElementById('options').innerHTML = '';
-    // 改为禁用按钮并保持显示
-    newFriendBtn.disabled = true;
-    newFriendBtn.style.opacity = '0.6';
-    newFriendBtn.style.cursor = 'not-allowed';
-    actionButtons.style.display = "block";
-    document.getElementById('currentInteraction').textContent = '无';
-}
-                            }
-                            saveGame();
-                            updateRanking();
-                            updateStats();
-							updateTrialProgress();   // ← 添加这一行
-                            // 恢复抽取按钮
-                            newFriendBtn.disabled = false;
-                            newFriendBtn.style.opacity = '1';
-                            newFriendBtn.style.cursor = 'pointer';
-                        }
-						// 添加到历史记录（放在这里，确保无论玩家还是NPC死亡都记录）
-    addToHistory(`<p class="special-dialogue">${fullMessage}</p>`);
-                    };
-                }, 2000);
-            } else {
-                // 如果弹窗不存在（备用方案）
-                addSystemMessage(spellDesc);
-                addSystemMessage(isPlayerVictim ? `💀 不幸！你被“迁羽量胜”之术选中，气数已尽，当场陨落！` : `💀 噩耗！${victimName} 真人被“迁羽量胜”之术击中，当场陨落！`);
-                if (isPlayerVictim) {
-                    gameOver();
-                } else {
-                    gameState.allCharacters = gameState.allCharacters.filter(c => 
-                        !(c.surname === victim.surname && c.name === victim.name)
-                    );
-                    if (gameState.metCharacters.has(victimName)) {
-                        gameState.metCharacters.delete(victimName);
-                        if (gameState.currentCharacter && 
-    gameState.currentCharacter.surname === victim.surname && 
-    gameState.currentCharacter.name === victim.name) {
-    gameState.currentCharacter = null;
-    document.getElementById('currentCharacter').innerHTML = '';
-    document.getElementById('options').innerHTML = '';
-    // 改为禁用按钮并保持显示
-    newFriendBtn.disabled = true;
-    newFriendBtn.style.opacity = '0.6';
-    newFriendBtn.style.cursor = 'not-allowed';
-    actionButtons.style.display = "block";
-    document.getElementById('currentInteraction').textContent = '无';
-}
-                    }
-                    saveGame();
-                    updateRanking();
-                    updateStats();
-					updateTrialProgress();   // ← 添加
-                    newFriendBtn.disabled = false;
-                    newFriendBtn.style.opacity = '1';
-                    newFriendBtn.style.cursor = 'pointer';
-                }
-                addToHistory(`<p class="special-dialogue">${fullMessage}</p>`);
-            }
-            return; // 结束本次结识，不执行下面的正常流程
-        }
-    }}
-
-    // ---------- 正常结识逻辑（放在 try 里） ----------
-    try {
-        const available = getAvailableCharacters();
-        if (available.length === 0) {
-    addSystemMessage(`暂无其他真人可结识（皆已大道圆满）。`);
-    // 保持按钮可见但禁用
-    newFriendBtn.disabled = true;
-    newFriendBtn.style.opacity = '0.6';
-    newFriendBtn.style.cursor = 'not-allowed';
-    saveGame();
-    return;
-}
-
-        actionButtons.style.display = "block";
-
         let selectedChar = null;
         let attempts = 0;
-        const MAX_ATTEMPTS = 10;
-        while (attempts < MAX_ATTEMPTS) {
+        while (attempts < 15) {
             const candidate = getRandomElement(available);
             const candidateId = candidate.surname + candidate.name;
             const existingData = gameState.metCharacters.get(candidateId);
             const isEnded = existingData && (existingData.favor >= 100 || existingData.relation === 'enemy');
-            if (!isEnded) {
+            
+            if (!isEnded || Math.random() < REUNION_PROB) {
                 selectedChar = candidate;
                 break;
-            } else {
-                if (Math.random() < REUNION_PROB) {
-                    selectedChar = candidate;
-                    break;
-                }
             }
             attempts++;
         }
-        if (!selectedChar) {
-            selectedChar = getRandomElement(available);
-        }
+        if (!selectedChar) selectedChar = getRandomElement(available);
 
-        const randomChar = selectedChar;
-        if (!randomChar.hobbies || randomChar.hobbies.length === 0) {
-            randomChar.hobbies = generateHobbiesForCharacter(randomChar);
-        }
-        gameState.currentCharacter = { ...randomChar };
-
+        gameState.currentCharacter = { ...selectedChar };
         const charId = gameState.currentCharacter.surname + gameState.currentCharacter.name;
         let charData = gameState.metCharacters.get(charId);
-        let isEnded = false;
 
         if (!charData) {
-            const initialFavor = calculateInitialFavor();
             charData = {
                 character: gameState.currentCharacter,
-                favor: initialFavor,
+                favor: calculateInitialFavor(),
                 talks: 0,
                 specialDialogueTriggered: false,
                 isAdvancedSimaQuan: false,
@@ -326,68 +178,64 @@ if (gameState.eventMessageIndex >= gameData.globalEventMessages.length) {
             gameState.isFirstEncounter = true;
             displayEncounterInfo(charData.favor);
         } else {
+            // 处理怨侣干扰
             if (charData.relation === 'enemy' && Math.random() < 0.5) {
                 const loss = 5;
                 gameState.player.insightPoints = Math.max(0, (gameState.player.insightPoints || 0) - loss);
                 addSystemMessage(`⚠️ 怨侣重逢！${charId} 的干扰让你损失了 ${loss} 点感悟！`);
-                addToHistory(`<p class="other-message" style="background: #ffebee;">⚠️ 怨侣重逢！${charId} 的干扰让你损失了 ${loss} 点感悟！</p>`);
                 refreshPlayerInsightUI();
             }
             charData.talks = 0;
-            gameState.metCharacters.set(charId, charData);
             gameState.isFirstEncounter = false;
-            isEnded = charData.favor >= 100 || charData.relation === 'enemy';
+            
+            const isEnded = charData.favor >= 100 || charData.relation === 'enemy';
             if (isEnded) {
-                document.getElementById('dialogueBox').innerHTML = '';
-                let dialogue = '';
-                if (charData.relation === 'companion') {
-                    const pool = gameData.enemyDialogues?.fullFavorDialogues?.default || ["……"];
-                    dialogue = getRandomElement(pool);
-                    addDaoyouMessage(dialogue, charId, gameState.currentCharacter);
-                    addToHistory(`<p class="special-dialogue">✨ 重逢：${charId} 对你说：“${dialogue}”</p>`);
-                } else if (charData.relation === 'enemy') {
-                    const level = getFavorLevel(charData.favor);
-                    const enemyPool = gameData.enemyDialogues?.default;
-                    const lines = enemyPool && enemyPool[level] ? enemyPool[level] : (enemyPool?.[0] || ["……"]);
-                    dialogue = getRandomElement(lines);
-                    addDaoyouMessage(dialogue, charId, gameState.currentCharacter);
-                    addToHistory(`<p class="special-dialogue">💔 重逢：${charId} 对你说：“${dialogue}”</p>`);
-                }
-                gameState.canTalk = true;
+                renderEndgameReunion(charId, charData);
             } else {
                 displayReencounterInfo(charData.favor);
             }
         }
 
-        if (!isEnded) {
-            gameState.canTalk = charData.talks < 1;
-        }
-
+        gameState.canTalk = (charData.favor < 100 && charData.relation !== 'enemy');
         gameState.randomEventTriggered = false;
-        const currentInteraction = document.getElementById('currentInteraction');
-        currentInteraction.textContent = charId;
+        document.getElementById('currentInteraction').textContent = charId;
         displayCurrentCharacter();
-        actionButtons.style.display = "block";
-
+        
         if (gameState.canTalk) {
             prepareHobbySelection();
         } else {
-            document.getElementById('options').innerHTML = '';
+            document.getElementById('options').innerHTML = "";
         }
 
         updateStats();
         updateRanking();
         saveGame();
+
     } catch (e) {
-        console.error("抽取新道友出错", e);
-        addSystemMessage(`抽取道友时发生错误，请重试。`);
-        actionButtons.style.display = "block";
+        console.error("抽取失败:", e);
+        addSystemMessage("抽取灵机紊乱，请重试。");
     } finally {
-        // 正常结识流程结束后，启用抽取按钮
-        newFriendBtn.disabled = false;
-        newFriendBtn.style.opacity = '1';
-        newFriendBtn.style.cursor = 'pointer';
+        // 只有当没有触发“迁羽量胜”弹窗（即没有 return）时，才在这里恢复按钮
+        // 因为“迁羽量胜”的按钮恢复逻辑在弹窗点击里
+        if (newFriendBtn && !document.getElementById('eventModal').style.display.includes('flex')) {
+            newFriendBtn.disabled = false;
+            newFriendBtn.style.opacity = '1';
+            newFriendBtn.style.cursor = 'pointer';
+        }
     }
+}
+
+// 辅助函数：渲染结局后的重逢对话
+function renderEndgameReunion(charId, charData) {
+    document.getElementById('dialogueBox').innerHTML = '';
+    let dialogue = "……";
+    if (charData.relation === 'companion') {
+        dialogue = getRandomElement(gameData.enemyDialogues?.fullFavorDialogues?.default || ["道友。"]);
+    } else {
+        const level = getFavorLevel(charData.favor);
+        dialogue = getRandomElement(gameData.enemyDialogues?.default[level] || ["哼。"]);
+    }
+    addDaoyouMessage(dialogue, charId, gameState.currentCharacter);
 }
   
 
@@ -1381,4 +1229,5 @@ function gameOver() {
 
     modal.style.display = 'flex';
 	actionButtons.style.display = "block";
+
 }
