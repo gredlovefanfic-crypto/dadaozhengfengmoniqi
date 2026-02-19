@@ -390,14 +390,25 @@ function handleHobbySelection(selectedHobby, isReal) {
             else addSystemMessage(`好感度无变化`);
 
             if (charData.relation === 'companion' && charData.favor <= 0) {
-                if (confirm(`你和 ${charId} 的关系已降至冰点！是否愿意消耗10点修为挽回这段感情？`)) {
+                let userWantsToSave = false;
+                try {
+                    // 尝试呼出原生确认框
+                    userWantsToSave = confirm(`你和 ${charId} 的关系已降至冰点！是否愿意消耗10点修为挽回这段感情？`);
+                } catch (e) {
+                    // 如果被微信/Webview拦截报错，默认当做“不挽回”处理
+                    console.warn("环境拦截了confirm弹窗", e);
+                    userWantsToSave = false; 
+                }
+
+                if (userWantsToSave) {
                     if (gameState.player.cultivation >= 10) {
                         gameState.player.cultivation -= 10;
                         charData.favor = 1;
                         addSystemMessage(`你消耗10点修为，与 ${charId} 重归于好。`);
                         addToHistory(`<p class="special-dialogue">你消耗10点修为，与 ${charId} 重归于好。</p>`);
                     } else {
-                        alert(`修为不足10点，无法挽回。`);
+                        // 【重要】把 alert 换成内部 UI 提示，防止 alert 也被拦截导致假死
+                        addSystemMessage(`⚠️ 修为不足10点，无法挽回。`); 
                         charData.relation = 'enemy';
                         charData.favor = 0;
                         addSystemMessage(`修为不足，${charId} 与你恩断义绝。`);
@@ -407,7 +418,7 @@ function handleHobbySelection(selectedHobby, isReal) {
                     charData.relation = 'enemy';
                     charData.favor = 0;
                     charData.favorMaxed = false;  
-                    addSystemMessage(`你放弃了挽回，${charId} 与你恩断义绝。`);
+                    addSystemMessage(`你放弃了挽回（或环境受限），${charId} 与你恩断义绝。`);
                     addToHistory(`<p class="special-dialogue">你放弃了挽回，${charId} 与你恩断义绝。</p>`);
                 }
                 gameState.metCharacters.set(charId, charData);
@@ -1162,4 +1173,5 @@ function gameOver() {
     const actionButtons = document.getElementById('actionButtons');
     if (actionButtons) actionButtons.style.display = "block";
 }
+
 
