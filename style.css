@@ -299,4 +299,22 @@ button.primary {
     overflow-y: auto;
     padding: 8px;
     font-size: 0.8rem;
+
+}
+
+/* 针对手机端的 Tooltip 优化 */
+@media (max-width: 768px) {
+    #hobbyTooltip {
+        position: fixed;
+        /* 强制固定在屏幕中上方，而不是跟随点击位置 */
+        top: 25% !important;
+        left: 50% !important;
+        transform: translateX(-50%);
+        width: 80%;
+        max-width: 280px;
+        background: rgba(0, 0, 0, 0.9) !important;
+        border: 2px solid #c8a060 !important;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        pointer-events: auto; /* 允许点击 Tooltip 消失 */
+    }
 }
